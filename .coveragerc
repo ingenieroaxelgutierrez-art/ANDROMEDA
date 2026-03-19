@@ -1,0 +1,18 @@
+[run]
+source = .
+omit =
+    .venv/*
+    venv/*
+    tests/*
+    */__pycache__/*
+    build/*
+    data/*
+    _migrate_*.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__
+    raise NotImplementedError
+show_missing = true
+precision = 1
