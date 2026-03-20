@@ -28,7 +28,7 @@ fpdf2>=2.7.0,<3.0.0
 # Reconocimiento de Voz
 SpeechRecognition>=3.14.0,<4.0.0
 pydub>=0.25.0,<1.0.0
-pyaudio>=0.2.14,<1.0.0
+#pyaudio>=0.2.14,<1.0.0
 
 # Procesamiento de documentos (Manual Odoo)
 python-docx>=0.8.11,<1.0.0
