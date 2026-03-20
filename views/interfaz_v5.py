@@ -2299,6 +2299,7 @@ class OdooAIProV5:
                             resultado_cadena = self.gestor_agentes.ejecutar_cadena_completa(
                                 pasos=pasos_cadena,
                                 consulta=consulta,
+                                mensaje=mensaje,
                                 respuesta_principal=respuesta,
                                 df_principal=df
                             )

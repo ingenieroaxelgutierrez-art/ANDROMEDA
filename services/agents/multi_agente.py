@@ -1989,21 +1989,24 @@ class GestorMultiAgente:
                 observaciones.extend(resultado_post.observaciones)
                 continue
 
-            # === Agente de soporte: ejecutar su propio paso ===
+            # === Agente de soporte: ejecutar solo si tiene acción propia ===
+            accion_actual = getattr(consulta, 'accion_sugerida', '') or ''
+            acciones_propias = getattr(agente, 'acciones_soportadas', set()) or set()
             ejecutor = self.ejecutores_por_agente.get(paso.agente_id) or self.ejecutor_default
             resp_soporte = ""
             df_soporte = None
 
-            if ejecutor:
+            # Solo ejecutar si el agente tiene una acción específica para esta consulta;
+            # de lo contrario ir directo a enriquecimiento con df_principal.
+            if ejecutor and accion_actual in acciones_propias:
                 try:
                     resp_soporte, df_soporte = agente.ejecutar(consulta, mensaje, ejecutor)
                     paso.respuesta_parcial = resp_soporte
                     paso.datos_parciales = df_soporte
                 except Exception as e:
                     paso.error = str(e)[:120]
-                    paso.exito = False
                     advertencias.append(f"{paso.agente_id}: error ejecución — {paso.error}")
-                    continue
+                    # No marcar exito=False: aún puede enriquecer con df_principal
 
             # Enriquecer la respuesta acumulada con datos del soporte
             df_para_enriquecer = df_soporte if (df_soporte is not None and hasattr(df_soporte, 'empty') and not df_soporte.empty) else df_principal
