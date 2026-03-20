@@ -66,6 +66,7 @@ logger = get_logger("views.interfaz_v5")
 
 # Formateador de respuestas extraído (ARQ-001)
 from services.formatters.formateador_respuestas import FormateadorRespuestas
+from services.formatters.formateador_conclusiones import FormateadorConclusiones
 
 # Ejecutores de agentes extraídos (ARQ-002)
 from services.agents.ejecutores import EjecutoresAgente
@@ -1153,6 +1154,7 @@ class OdooAIProV5:
         self.asistente_errores = AsistenteErroresOdoo()
         self.motor_empatico = MotorEmpatico()
         self.fmt = FormateadorRespuestas()
+        self._conclusiones = FormateadorConclusiones()
         
         # Ejecutor de acciones extraído (ARQ-v2-001)
         self._ejecutor_acciones = EjecutorAcciones(self)
@@ -1906,6 +1908,15 @@ class OdooAIProV5:
                     # Usar respuesta del LLM si falla la acción
                     respuesta_final = respuesta_llm
             
+            # Estructura conversacional: Reconocimiento → Datos → Insight → Cierre
+            if accion and accion.accion:
+                respuesta_final = self._conclusiones.aplicar(
+                    respuesta=respuesta_final,
+                    accion=accion.accion,
+                    intencion=accion.accion,
+                    es_cadena=False,
+                )
+
             # Agregar empatía si corresponde
             if resp_empatica and tipo_emp == 'emocional':
                 respuesta_final = resp_empatica + "\n\n" + respuesta_final
@@ -2363,6 +2374,15 @@ class OdooAIProV5:
                     except Exception:
                         pass
         
+        # Estructura conversacional: Reconocimiento → Datos → Insight → Cierre
+        if not hubo_error_ejecucion:
+            respuesta = self._conclusiones.aplicar(
+                respuesta=respuesta,
+                accion=consulta.accion_sugerida,
+                intencion=consulta.intencion_principal,
+                es_cadena=bool(cadena_info),
+            )
+
         # Agregar empatía si corresponde
         if resp_empatica and tipo_emp == 'emocional':
             respuesta = resp_empatica + "\n\n" + respuesta
