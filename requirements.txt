@@ -1,0 +1,71 @@
+# ============================================================
+# ANDROMEDA - Dependencias
+# ============================================================
+# Instalar con: pip install -r requirements.txt
+# Versiones fijadas el 2026-03-13 para builds reproducibles
+# ============================================================
+
+# Core - Conexión ERP y manejo de datos
+odoorpc>=0.10.0,<1.0.0
+pandas>=3.0.0,<4.0.0
+numpy>=2.4.0,<3.0.0
+
+# NLP Local (sin APIs externas)
+spacy>=3.8.0,<4.0.0
+
+# Embeddings locales (opcional, pesado ~2GB)
+sentence-transformers>=5.0.0,<6.0.0
+
+# Interfaz Gráfica
+gradio>=6.0.0,<7.0.0
+
+# Generación de Reportes
+openpyxl>=3.1.0,<4.0.0
+matplotlib>=3.10.0,<4.0.0
+reportlab>=4.0.0,<5.0.0
+fpdf2>=2.7.0,<3.0.0
+
+# Reconocimiento de Voz
+SpeechRecognition>=3.14.0,<4.0.0
+pydub>=0.25.0,<1.0.0
+#pyaudio>=0.2.14,<1.0.0
+
+# Procesamiento de documentos (Manual Odoo)
+python-docx>=0.8.11,<1.0.0
+
+# Memoria Vectorial (ChromaDB)
+chromadb>=1.0.0,<2.0.0
+
+# Grafo de Conocimiento
+networkx>=3.0,<4.0.0
+
+# Machine Learning y Visualización
+plotly>=6.0.0,<7.0.0
+torch>=2.10.0,<3.0.0
+
+# HTTP - Integración con Ollama LLM
+requests>=2.32.0,<3.0.0
+
+# API REST (FastAPI — Fase 3)
+fastapi>=0.100.0,<1.0.0
+uvicorn[standard]>=0.20.0,<1.0.0
+httpx>=0.25.0,<1.0.0
+
+# Base de Datos SaaS y Cifrado (Fase 4)
+sqlalchemy>=2.0.0,<3.0.0
+cryptography>=41.0.0,<45.0.0
+
+# Utilidades
+python-dateutil>=2.9.0,<3.0.0
+tabulate>=0.9.0,<1.0.0
+python-dotenv>=1.0.0,<2.0.0
+
+# Autenticación JWT (Fase 5)
+python-jose[cryptography]>=3.3.0,<4.0.0
+# passlib: usamos pbkdf2_sha256 (puro Python, OWASP) — compatible con cualquier versión de bcrypt
+passlib>=1.7.4,<2.0.0
+
+# Testing (desarrollo)
+pytest>=9.0.0,<10.0.0
+pytest-cov>=6.0.0,<7.0.0
+httpx>=0.25.0,<1.0.0
