@@ -18,7 +18,7 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -96,7 +96,7 @@ def _get_token_payload(
 
 # ── Endpoints públicos ────────────────────────────────────────────────────────
 
-@router.post("/login", response_model=TokenResponse, summary="Iniciar sesión")
+@router.post("/login", summary="Iniciar sesión")
 def login(datos: LoginRequest) -> TokenResponse:
     """
     Autentica usuario con email + contraseña.
@@ -127,7 +127,7 @@ def login(datos: LoginRequest) -> TokenResponse:
     )
 
 
-@router.post("/refresh", response_model=TokenResponse, summary="Renovar access token")
+@router.post("/refresh", summary="Renovar access token")
 def refresh(datos: RefreshRequest) -> TokenResponse:
     """
     Renueva el ``access_token`` usando un ``refresh_token`` válido.
@@ -170,8 +170,8 @@ def logout() -> None:
 
 # ── Endpoints protegidos ──────────────────────────────────────────────────────
 
-@router.get("/me", response_model=UsuarioActual, summary="Perfil del usuario autenticado")
-def me(payload: dict = Depends(_get_token_payload)) -> UsuarioActual:
+@router.get("/me", summary="Perfil del usuario autenticado")
+def me(payload: Annotated[dict, Depends(_get_token_payload)]) -> UsuarioActual:
     """Retorna el perfil del usuario desde el JWT. Requiere Bearer token."""
     usuario = _usuario_por_id(payload["sub"])
     if not usuario:
@@ -181,13 +181,16 @@ def me(payload: dict = Depends(_get_token_payload)) -> UsuarioActual:
 
 @router.post(
     "/usuarios",
-    response_model=UsuarioActual,
     status_code=status.HTTP_201_CREATED,
     summary="Crear usuario (solo admin)",
+    responses={
+        404: {"description": "Empresa no encontrada"},
+        409: {"description": "Ya existe un usuario con ese email"},
+    },
 )
 def crear_usuario(
     datos: UsuarioCrearRequest,
-    payload: dict = Depends(_get_token_payload),
+    payload: Annotated[dict, Depends(_get_token_payload)],
 ) -> UsuarioActual:
     """Crea un nuevo usuario. Solo rol ``admin`` puede invocar este endpoint."""
     if payload.get("rol") != "admin":

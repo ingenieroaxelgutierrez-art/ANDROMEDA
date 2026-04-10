@@ -11,7 +11,6 @@ VERSIÓN MEJORADA: Contenido completo con pasos e imágenes inline
 import os
 import json
 import re
-import base64
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field, asdict
@@ -478,38 +477,21 @@ class ProcesadorManuales:
         
         return resultados
     
-    def _imagen_a_base64(self, ruta_imagen: str) -> Optional[str]:
-        """Convierte una imagen a data URI base64 para incrustar en Markdown."""
+    def _imagen_a_url(self, ruta_imagen: str) -> Optional[str]:
+        """Devuelve la URL pública de la imagen servida por el endpoint /manuales/imagenes/."""
         try:
             if not os.path.exists(ruta_imagen):
                 return None
-            
-            # Determinar tipo MIME
-            extension = Path(ruta_imagen).suffix.lower()
-            mime_types = {
-                '.png': 'image/png',
-                '.jpg': 'image/jpeg',
-                '.jpeg': 'image/jpeg',
-                '.gif': 'image/gif',
-                '.webp': 'image/webp'
-            }
-            mime = mime_types.get(extension, 'image/png')
-            
-            # Leer y codificar
-            with open(ruta_imagen, 'rb') as f:
-                datos = f.read()
-            
-            b64 = base64.b64encode(datos).decode('utf-8')
-            return f"data:{mime};base64,{b64}"
-            
+            nombre = Path(ruta_imagen).name
+            return f"http://127.0.0.1:8000/manuales/imagenes/{nombre}"
         except Exception as e:
-            logger.error(f"Error convirtiendo imagen: {e}")
+            logger.error(f"Error generando URL de imagen: {e}")
             return None
     
     def formatear_respuesta(self, resultados: List[ResultadoBusqueda]) -> str:
         """
         Formatea los resultados como Markdown CON PASOS E IMÁGENES.
-        Usa base64 para incrustar imágenes directamente en el Markdown.
+        Usa URLs del endpoint /manuales/imagenes/ para referenciar imágenes.
         """
         if not resultados:
             return "No encontré información sobre eso en el manual.\n\n¿Podrías reformular tu pregunta o usar otras palabras?"
@@ -541,11 +523,11 @@ class ProcesadorManuales:
                         md += f"**Paso {numero}.** {texto}\n\n"
                         pasos_mostrados += 1
                     
-                    # Mostrar imagen como base64 (con límite)
+                    # Mostrar imagen como URL (con límite)
                     if imagen and imagenes_mostradas < max_imagenes:
-                        data_uri = self._imagen_a_base64(imagen)
-                        if data_uri:
-                            md += f"![Paso {numero}]({data_uri})\n\n"
+                        url = self._imagen_a_url(imagen)
+                        if url:
+                            md += f"![Paso {numero}]({url})\n\n"
                             imagenes_mostradas += 1
             else:
                 # Si no hay pasos estructurados, mostrar contenido como lista
@@ -556,9 +538,9 @@ class ProcesadorManuales:
                 
                 # Agregar algunas imágenes
                 for i, img in enumerate(seccion.imagenes[:5]):
-                    data_uri = self._imagen_a_base64(img)
-                    if data_uri:
-                        md += f"![Referencia {i+1}]({data_uri})\n\n"
+                    url = self._imagen_a_url(img)
+                    if url:
+                        md += f"![Referencia {i+1}]({url})\n\n"
         
         md += "\n---\n *Información extraída del Manual de Odoo*"
         

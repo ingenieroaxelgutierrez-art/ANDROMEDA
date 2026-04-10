@@ -41,16 +41,25 @@ export default function MetricasPage() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold text-andromeda-700">
+      <h2 className="text-xl font-bold text-white">
         Métricas del sistema
       </h2>
 
       {loading && (
-        <p className="text-sm text-gray-400 animate-pulse">Cargando métricas…</p>
+        <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>
+          Cargando métricas…
+        </p>
       )}
 
       {error && (
-        <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+        <div
+          className="px-4 py-3 rounded-lg text-sm"
+          style={{
+            background: "rgba(239,68,68,0.12)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            color: "#f87171",
+          }}
+        >
           {error}
         </div>
       )}
@@ -66,26 +75,33 @@ export default function MetricasPage() {
             <MetricsCard
               label="Consultas exitosas"
               value={metricas.consultas_ok.toLocaleString()}
-              colorClass="text-green-600"
+              colorClass="text-emerald-400"
             />
             <MetricsCard
               label="Tasa de error"
               value={`${metricas.tasa_error.toFixed(1)}%`}
-              colorClass={
-                metricas.tasa_error > 10 ? "text-red-600" : "text-andromeda-700"
-              }
+              colorClass={metricas.tasa_error > 10 ? "text-red-400" : "text-andromeda-400"}
             />
             <MetricsCard
               label="Duración promedio"
               value={`${Math.round(metricas.duracion_promedio_ms)} ms`}
-              colorClass="text-andromeda-700"
+              colorClass="text-andromeda-400"
             />
           </div>
 
           {/* Gráfico de consultas por tipo */}
           {porTipoData.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <h3 className="text-sm font-semibold text-gray-600 mb-4">
+            <div
+              className="rounded-xl p-6"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <h3
+                className="text-sm font-semibold mb-4"
+                style={{ color: "rgba(255,255,255,0.6)" }}
+              >
                 Consultas por tipo
               </h3>
               <ResponsiveContainer width="100%" height={260}>
@@ -93,28 +109,38 @@ export default function MetricasPage() {
                   data={porTipoData}
                   margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis
                     dataKey="tipo"
-                    tick={{ fontSize: 11, fill: "#6b7280" }}
+                    tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }}
+                    axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+                    tickLine={false}
                   />
-                  <YAxis tick={{ fontSize: 11, fill: "#6b7280" }} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "rgba(255,255,255,0.4)" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
                   <Tooltip
                     contentStyle={{
                       fontSize: 12,
                       borderRadius: 8,
-                      border: "1px solid #e5e7eb",
+                      background: "rgba(15,15,35,0.95)",
+                      border: "1px solid rgba(102,126,234,0.3)",
+                      color: "#fff",
                     }}
+                    cursor={{ fill: "rgba(255,255,255,0.04)" }}
                   />
-                  <Bar dataKey="consultas" fill="#3b5bdb" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="consultas" fill="#667eea" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
 
           {/* Empresas activas */}
-          <div className="text-sm text-gray-500">
-            Empresas activas: <strong>{metricas.empresas_activas}</strong>
+          <div className="text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
+            Empresas activas:{" "}
+            <strong className="text-white">{metricas.empresas_activas}</strong>
           </div>
         </>
       )}

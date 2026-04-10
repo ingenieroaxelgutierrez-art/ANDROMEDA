@@ -106,7 +106,34 @@ class MatrizDatosOdoo:
     Matriz completa de modelos, campos y relaciones de Odoo.
     Conocimiento experto del esquema de datos para consultas precisas.
     """
-    
+
+    # ── Constantes de modelos Odoo ────────────────────────────────────────────
+    M_SALE_ORDER = 'sale.order'
+    M_POS_ORDER = 'pos.order'
+    M_STOCK_QUANT = 'stock.quant'
+    M_STOCK_PICKING = 'stock.picking'
+    M_ACCOUNT_MOVE = 'account.move'
+    M_ACCOUNT_PAYMENT = 'account.payment'
+    M_PURCHASE_ORDER = 'purchase.order'
+    M_HR_EMPLOYEE = 'hr.employee'
+    M_CRM_LEAD = 'crm.lead'
+    M_PRODUCT_PRODUCT = 'product.product'
+    M_PRODUCT_TEMPLATE = 'product.template'
+    M_PRODUCT_CATEGORY = 'product.category'
+    M_RES_PARTNER = 'res.partner'
+    M_RES_USERS = 'res.users'
+    M_RES_COMPANY = 'res.company'
+    M_STOCK_WAREHOUSE = 'stock.warehouse'
+    M_STOCK_LOCATION = 'stock.location'
+    M_HR_DEPARTMENT = 'hr.department'
+
+    # ── Constantes de descripción comunes ────────────────────────────────────
+    D_ID_UNICO = 'ID único'
+    D_DESCRIPCION = 'Descripción'
+    D_PRECIO_UNITARIO = 'Precio unitario'
+    D_LINEAS = 'Líneas'
+    D_NUMERO = 'Número'
+
     # Modelos principales con campos y relaciones
     MODELOS = {
         # ======== VENTAS ========
@@ -700,7 +727,7 @@ class LimpiadorDatos:
             'errores_encontrados': [],
         }
     
-    def limpiar_dataframe(self, df: pd.DataFrame, modelo: str = None) -> Tuple[pd.DataFrame, float, Dict]:
+    def limpiar_dataframe(self, df: pd.DataFrame, modelo: str = None) -> Tuple[pd.DataFrame, float, Dict]:  # noqa: ARG002
         """
         Limpia un DataFrame y retorna confianza del resultado.
         
@@ -1395,7 +1422,7 @@ class CerebroAndromeda:
         
         try:
             # 1. Interpretar la consulta
-            modelo, accion = self._interpretar_consulta(consulta, tipo_reporte)
+            modelo, _ = self._interpretar_consulta(consulta, tipo_reporte)
             
             if not modelo:
                 return ResultadoAnalisis(
@@ -1416,7 +1443,7 @@ class CerebroAndromeda:
                 )
             
             # 2. Obtener datos de Odoo
-            df, datos_raw = self._obtener_datos(modelo, fecha_inicio, fecha_fin, filtros, limite)
+            df, _ = self._obtener_datos(modelo, fecha_inicio, fecha_fin, filtros, limite)
             
             if df is None or df.empty:
                 return ResultadoAnalisis(

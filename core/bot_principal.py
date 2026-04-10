@@ -12,8 +12,12 @@ from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 from dataclasses import dataclass, field
 
-# Agregar directorio raíz al path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Constantes de sugerencias frecuentes
+SUGERENCIA_VER_VENTAS = "Ver ventas"
+SUGERENCIA_GENERAR_REPORTE = "Generar reporte"
+_MODEL_PRODUCT = 'product.product'
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
@@ -261,7 +265,7 @@ Puedo mostrarte productos específicos o generar un reporte."""
             mensaje=mensaje,
             tipo="tabla",
             datos=df,
-            sugerencias=["Productos sin stock", "Top 10 con más stock", "Generar reporte"]
+            sugerencias=["Productos sin stock", "Top 10 con más stock", SUGERENCIA_GENERAR_REPORTE]
         )
     
     def _handle_clientes(self, texto: str, intencion: IntencionDetectada) -> RespuestaBot:
@@ -289,13 +293,13 @@ Aquí están los clientes más activos. ¿Necesitas más detalles?"""
             mensaje=mensaje,
             tipo="tabla",
             datos=df,
-            sugerencias=["Ver todos los clientes", "Buscar cliente específico", "Generar reporte"]
+            sugerencias=["Ver todos los clientes", "Buscar cliente específico", SUGERENCIA_GENERAR_REPORTE]
         )
     
     def _handle_productos(self, texto: str, intencion: IntencionDetectada) -> RespuestaBot:
         """Maneja consultas de productos."""
         df = self.odoo.buscar(
-            'product.product',
+            _MODEL_PRODUCT,
             campos=['name', 'default_code', 'list_price', 'qty_available', 'categ_id'],
             limite=50
         )
@@ -306,9 +310,9 @@ Aquí están los clientes más activos. ¿Necesitas más detalles?"""
                 tipo="texto"
             )
         
-        total = self.odoo.contar('product.product')
+        total = self.odoo.contar(_MODEL_PRODUCT)
         
-        self.contexto.ultimo_modelo = 'product.product'
+        self.contexto.ultimo_modelo = _MODEL_PRODUCT
         self.contexto.ultimos_datos = df
         
         mensaje = f"""**PRODUCTOS**
@@ -361,9 +365,24 @@ Mostrando los primeros 50 productos."""
             mensaje=mensaje,
             tipo="tabla",
             datos=df,
-            sugerencias=["Ver por tienda", "Tickets del mes", "Generar reporte"]
+            sugerencias=["Ver por tienda", "Tickets del mes", SUGERENCIA_GENERAR_REPORTE]
         )
-    
+
+    def _organizar_campos_por_tipo(self, campos: dict) -> dict:
+        """Agrupa los campos de un modelo Odoo por tipo de dato."""
+        campos_por_tipo: dict = {}
+        for nombre, info in campos.items():
+            tipo = info.get('type', 'unknown')
+            if tipo not in campos_por_tipo:
+                campos_por_tipo[tipo] = []
+            campos_por_tipo[tipo].append({
+                'campo': nombre,
+                'etiqueta': info.get('string', ''),
+                'requerido': '✓' if info.get('required') else '',
+                'relacion': info.get('relation', '')
+            })
+        return campos_por_tipo
+
     def _handle_describir(self, texto: str, intencion: IntencionDetectada) -> RespuestaBot:
         """Describe un modelo de Odoo."""
         modelo = intencion.parametros.get('modelo', '')
@@ -395,17 +414,7 @@ Mostrando los primeros 50 productos."""
             )
         
         # Organizar campos por tipo
-        campos_por_tipo = {}
-        for nombre, info in campos.items():
-            tipo = info.get('type', 'unknown')
-            if tipo not in campos_por_tipo:
-                campos_por_tipo[tipo] = []
-            campos_por_tipo[tipo].append({
-                'campo': nombre,
-                'etiqueta': info.get('string', ''),
-                'requerido': '✓' if info.get('required') else '',
-                'relacion': info.get('relation', '')
-            })
+        campos_por_tipo = self._organizar_campos_por_tipo(campos)
         
         # Crear DataFrame para mostrar
         lista_campos = []
@@ -536,8 +545,6 @@ Puedes pedirme que describa cualquiera de estos modelos."""
             titulo = f"Reporte_{self.contexto.ultimo_modelo or 'General'}"
         else:
             # Generar reporte general
-            resumen = self.odoo.resumen_general()
-            
             datos = {
                 'Ventas Hoy': self.odoo.ventas_hoy(),
                 'Clientes Top': self.odoo.clientes_activos(20),
@@ -611,7 +618,12 @@ Puedes pedirme que describa cualquiera de estos modelos."""
         diferencia = total_hoy - total_ayer
         porcentaje = (diferencia / total_ayer * 100) if total_ayer > 0 else 0
         
-        emoji = "📈" if diferencia > 0 else "📉" if diferencia < 0 else "➡️"
+        if diferencia > 0:
+            emoji = "📈"
+        elif diferencia < 0:
+            emoji = "📉"
+        else:
+            emoji = "➡️"
         
         mensaje = f"""**COMPARATIVA: HOY vs AYER**
 
@@ -630,7 +642,7 @@ Puedes pedirme que describa cualquiera de estos modelos."""
         return RespuestaBot(
             mensaje=mensaje,
             tipo="texto",
-            sugerencias=["Comparar mes vs mes anterior", "Ver tendencia semanal", "Generar reporte"]
+            sugerencias=["Comparar mes vs mes anterior", "Ver tendencia semanal", SUGERENCIA_GENERAR_REPORTE]
         )
     
     def _handle_ayuda(self, texto: str, intencion: IntencionDetectada) -> RespuestaBot:
@@ -668,7 +680,7 @@ Puedes pedirme que describa cualquiera de estos modelos."""
         return RespuestaBot(
             mensaje=mensaje,
             tipo="ayuda",
-            sugerencias=["Resumen del sistema", "Ver ventas", "Listar modelos"]
+            sugerencias=["Resumen del sistema", SUGERENCIA_VER_VENTAS, "Listar modelos"]
         )
     
     def _handle_saludo(self, texto: str, intencion: IntencionDetectada) -> RespuestaBot:
@@ -679,7 +691,7 @@ Puedes pedirme que describa cualquiera de estos modelos."""
         return RespuestaBot(
             mensaje=mensaje,
             tipo="texto",
-            sugerencias=["¿Qué puedes hacer?", "Resumen del sistema", "Ver ventas"]
+            sugerencias=["¿Qué puedes hacer?", "Resumen del sistema", SUGERENCIA_VER_VENTAS]
         )
     
     def _handle_desconocido(self, texto: str, intencion: IntencionDetectada) -> RespuestaBot:

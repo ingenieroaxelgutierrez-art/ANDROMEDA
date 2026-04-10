@@ -129,8 +129,8 @@ async function _fetch(
       return _fetch(path, options, true);
     }
     // Redirigir a login en el navegador
-    if (typeof window !== "undefined") {
-      window.location.href = "/login";
+    if (globalThis.window !== undefined) {
+      globalThis.window.location.href = "/login";
     }
   }
 

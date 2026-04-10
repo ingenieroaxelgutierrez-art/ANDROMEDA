@@ -35,7 +35,7 @@ class TestEnumsYDataclasses:
         assert r.valor == 100
         assert r.unidad == ""
         assert r.tendencia == ""
-        assert r.variacion_porcentual == 0.0
+        assert r.variacion_porcentual == pytest.approx(0.0)
         assert r.detalles == {}
         assert r.datos is None
         assert r.alertas == []
@@ -61,10 +61,10 @@ class TestEnumsYDataclasses:
             cumplimiento=83.3,
             estado="regular"
         )
-        assert r.valor == 5000.0
+        assert r.valor == pytest.approx(5000.0)
         assert r.unidad == "MXN"
         assert r.tendencia == "↑"
-        assert r.meta == 6000.0
+        assert r.meta == pytest.approx(6000.0)
         assert len(r.alertas) == 1
         assert len(r.datos) == 2
 

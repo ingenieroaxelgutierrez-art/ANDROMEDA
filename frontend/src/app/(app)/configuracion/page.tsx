@@ -35,30 +35,60 @@ export default function ConfiguracionPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-andromeda-700">
+        <h2 className="text-xl font-bold text-white">
           Configuración de empresas
         </h2>
-        <span className="text-xs text-gray-400">
-          {empresas.length} empresa{empresas.length !== 1 ? "s" : ""} registrada
-          {empresas.length !== 1 ? "s" : ""}
+        <span
+          className="text-xs px-3 py-1 rounded-full"
+          style={{
+            background: "rgba(255,255,255,0.06)",
+            color: "rgba(255,255,255,0.4)",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          {empresas.length} empresa{empresas.length === 1 ? "" : "s"} registrada
+          {empresas.length === 1 ? "" : "s"}
         </span>
       </div>
 
       {loading && (
-        <p className="text-sm text-gray-400 animate-pulse">Cargando…</p>
+        <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>
+          Cargando…
+        </p>
       )}
 
       {error && (
-        <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+        <div
+          className="px-4 py-3 rounded-lg text-sm"
+          style={{
+            background: "rgba(239,68,68,0.12)",
+            border: "1px solid rgba(239,68,68,0.3)",
+            color: "#f87171",
+          }}
+        >
           {error}
         </div>
       )}
 
       {!loading && !error && empresas.length === 0 && (
-        <div className="text-center py-16 text-gray-400 text-sm">
+        <div
+          className="text-center py-16 text-sm"
+          style={{ color: "rgba(255,255,255,0.35)" }}
+        >
           No hay empresas configuradas todavía.
           <br />
-          Utiliza la API <code className="bg-gray-100 px-1 rounded">/configuracion</code> para agregar una.
+          Utiliza la API{" "}
+          <code
+            className="px-1.5 py-0.5 rounded text-xs"
+            style={{
+              background: "rgba(102,126,234,0.18)",
+              color: "#a5b4fc",
+              border: "1px solid rgba(102,126,234,0.25)",
+            }}
+          >
+            /configuracion
+          </code>{" "}
+          para agregar una.
         </div>
       )}
 
@@ -66,22 +96,44 @@ export default function ConfiguracionPage() {
         {empresas.map((e) => (
           <div
             key={e.id}
-            className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-2"
+            className="rounded-xl p-5 space-y-2"
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              backdropFilter: "blur(12px)",
+            }}
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800">{e.nombre}</h3>
+              <h3 className="font-semibold text-white">{e.nombre}</h3>
               <span
-                className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                style={
                   e.activa
-                    ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 text-gray-500"
-                }`}
+                    ? {
+                        background: "rgba(52,211,153,0.15)",
+                        color: "#34d399",
+                        border: "1px solid rgba(52,211,153,0.3)",
+                      }
+                    : {
+                        background: "rgba(255,255,255,0.06)",
+                        color: "rgba(255,255,255,0.35)",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                      }
+                }
               >
                 {e.activa ? "Activa" : "Inactiva"}
               </span>
             </div>
-            <p className="text-xs text-gray-500 truncate">{e.odoo_url}</p>
-            <div className="flex gap-4 text-xs text-gray-400">
+            <p
+              className="text-xs truncate"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+            >
+              {e.odoo_url}
+            </p>
+            <div
+              className="flex gap-4 text-xs"
+              style={{ color: "rgba(255,255,255,0.3)" }}
+            >
               <span>BD: {e.odoo_db}</span>
               <span>Odoo v{e.version_odoo}</span>
               <span>{e.tipo_erp.toUpperCase()}</span>

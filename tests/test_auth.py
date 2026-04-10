@@ -11,6 +11,12 @@
 
 import os
 import uuid
+
+# Constantes de prueba (no son credenciales reales de produccion)
+_PASS_VALIDO = "Seguro12345!"
+_PASS_CORTA = "1234567"  # < 8 caracteres (validar rechazo)
+_PASS_ALTERNATIVA = "MiPass99$"
+_PASS_INCORRECTA = "wrong-pass"
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 
@@ -223,7 +229,7 @@ class TestPasswordModel:
 
     def test_set_password_guarda_hash_no_texto_plano(self, empresa_id):
         from models.db_saas import get_session, Usuario
-        uid, email = _nuevo_usuario(empresa_id)
+        uid, _ = _nuevo_usuario(empresa_id)
         s = get_session()
         try:
             u = s.query(Usuario).filter(Usuario.id == uid).first()
@@ -234,11 +240,11 @@ class TestPasswordModel:
 
     def test_check_password_correcto_devuelve_true(self, empresa_id):
         from models.db_saas import get_session, Usuario
-        uid, _ = _nuevo_usuario(empresa_id, password="MiPass99$")
+        uid, _ = _nuevo_usuario(empresa_id, password=_PASS_ALTERNATIVA)
         s = get_session()
         try:
             u = s.query(Usuario).filter(Usuario.id == uid).first()
-            assert u.check_password("MiPass99$") is True
+            assert u.check_password(_PASS_ALTERNATIVA) is True
         finally:
             s.close()
 
@@ -289,12 +295,12 @@ class TestPasswordModel:
 class TestLogin:
 
     def test_login_exitoso_200(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         r = _login(api_client, email)
         assert r.status_code == 200
 
     def test_login_retorna_tokens(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         r = _login(api_client, email)
         data = r.json()
         assert "access_token" in data
@@ -303,7 +309,7 @@ class TestLogin:
         assert data["expires_in"] > 0
 
     def test_login_access_token_es_jwt_valido(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         r = _login(api_client, email)
         token = r.json()["access_token"]
         from app.api.auth.jwt_utils import decodificar_access_token
@@ -313,28 +319,28 @@ class TestLogin:
         assert payload["rol"] == "operador"
 
     def test_login_password_incorrecta_401(self, api_client, empresa_id, operador):
-        uid, email = operador
-        r = api_client.post("/auth/login", json={"email": email, "password": "wrong!"})
+        _, email = operador
+        r = api_client.post("/auth/login", json={"email": email, "password": _PASS_INCORRECTA})
         assert r.status_code == 401
 
     def test_login_email_desconocido_401(self, api_client):
         r = api_client.post(
             "/auth/login",
-            json={"email": "noexiste@unknown.com", "password": "Password123!"},
+            json={"email": "noexiste@unknown.com", "password": _PASS_VALIDO},
         )
         assert r.status_code == 401
 
     def test_login_error_generico_no_revela_si_existe(self, api_client, empresa_id, operador):
         """El mensaje de error debe ser idéntico para email desconocido y password incorrecta."""
-        uid, email = operador
-        r_bad_pass = api_client.post("/auth/login", json={"email": email, "password": "XXXX"})
+        _, email = operador
+        r_bad_pass = api_client.post("/auth/login", json={"email": email, "password": _PASS_INCORRECTA})
         r_bad_email = api_client.post(
-            "/auth/login", json={"email": "noexiste@x.com", "password": "Password123!"}
+            "/auth/login", json={"email": "noexiste@x.com", "password": _PASS_VALIDO}
         )
         assert r_bad_pass.json()["detail"] == r_bad_email.json()["detail"]
 
     def test_login_usuario_inactivo_401(self, api_client, empresa_id):
-        uid, email = _nuevo_usuario(empresa_id, activo=False)
+        _, email = _nuevo_usuario(empresa_id, activo=False)
         r = _login(api_client, email)
         assert r.status_code == 401
 
@@ -354,13 +360,13 @@ class TestLogin:
 class TestRefresh:
 
     def test_refresh_exitoso_200(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         tokens = _login(api_client, email).json()
         r = api_client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
         assert r.status_code == 200
 
     def test_refresh_emite_nuevo_access_token(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         tokens = _login(api_client, email).json()
         r = api_client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
         data = r.json()
@@ -378,7 +384,7 @@ class TestRefresh:
 
     def test_refresh_con_access_token_401(self, api_client, empresa_id, operador):
         """Un access_token no debe servir como refresh_token."""
-        uid, email = operador
+        _, email = operador
         tokens = _login(api_client, email).json()
         r = api_client.post("/auth/refresh", json={"refresh_token": tokens["access_token"]})
         assert r.status_code == 401
@@ -430,7 +436,7 @@ class TestLogout:
 class TestMe:
 
     def test_me_200(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         tokens = _login(api_client, email).json()
         r = api_client.get(
             "/auth/me",
@@ -439,7 +445,7 @@ class TestMe:
         assert r.status_code == 200
 
     def test_me_retorna_perfil_correcto(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         tokens = _login(api_client, email).json()
         r = api_client.get(
             "/auth/me",
@@ -460,7 +466,7 @@ class TestMe:
         assert r.status_code == 401
 
     def test_me_con_refresh_token_401(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         tokens = _login(api_client, email).json()
         # El refresh token no debe servir para autenticarse en /me
         r = api_client.get(
@@ -470,7 +476,7 @@ class TestMe:
         assert r.status_code == 401
 
     def test_me_no_expone_password_hash(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         tokens = _login(api_client, email).json()
         r = api_client.get(
             "/auth/me",
@@ -488,11 +494,11 @@ class TestMe:
 class TestCrearUsuario:
 
     def _token_admin(self, client, empresa_id: str) -> str:
-        uid, email = _nuevo_usuario(empresa_id, rol="admin")
+        _, email = _nuevo_usuario(empresa_id, rol="admin")
         return _login(client, email).json()["access_token"]
 
     def _token_operador(self, client, empresa_id: str) -> str:
-        uid, email = _nuevo_usuario(empresa_id, rol="operador")
+        _, email = _nuevo_usuario(empresa_id, rol="operador")
         return _login(client, email).json()["access_token"]
 
     def test_crear_usuario_admin_201(self, api_client, empresa_id):
@@ -503,7 +509,7 @@ class TestCrearUsuario:
             json={
                 "nombre": "Nuevo Operador",
                 "email": f"nuevo_{uuid.uuid4().hex[:6]}@corp.com",
-                "password": "Seguro12345!",
+                "password": _PASS_VALIDO,
                 "empresa_id": empresa_id,
                 "rol": "operador",
             },
@@ -519,7 +525,7 @@ class TestCrearUsuario:
             json={
                 "nombre": "El Nuevo",
                 "email": email,
-                "password": "Seguro12345!",
+                "password": _PASS_VALIDO,
                 "empresa_id": empresa_id,
                 "rol": "viewer",
             },
@@ -538,7 +544,7 @@ class TestCrearUsuario:
             json={
                 "nombre": "Alguien",
                 "email": f"x_{uuid.uuid4().hex[:6]}@x.com",
-                "password": "Seguro12345!",
+                "password": _PASS_VALIDO,
                 "empresa_id": empresa_id,
                 "rol": "viewer",
             },
@@ -551,7 +557,7 @@ class TestCrearUsuario:
             json={
                 "nombre": "Ghost",
                 "email": "ghost@x.com",
-                "password": "Seguro12345!",
+                "password": _PASS_VALIDO,
                 "empresa_id": empresa_id,
                 "rol": "viewer",
             },
@@ -563,7 +569,7 @@ class TestCrearUsuario:
         payload = {
             "nombre": "Dup",
             "email": f"dup_{uuid.uuid4().hex[:6]}@dup.com",
-            "password": "Seguro12345!",
+            "password": _PASS_VALIDO,
             "empresa_id": empresa_id,
             "rol": "operador",
         }
@@ -588,7 +594,7 @@ class TestCrearUsuario:
             json={
                 "nombre": "Huerfano",
                 "email": f"huerfano_{uuid.uuid4().hex[:6]}@x.com",
-                "password": "Seguro12345!",
+                "password": _PASS_VALIDO,
                 "empresa_id": str(uuid.uuid4()),  # ID que no existe
                 "rol": "operador",
             },
@@ -603,7 +609,7 @@ class TestCrearUsuario:
             json={
                 "nombre": "Bad",
                 "email": "bad@x.com",
-                "password": "Seguro12345!",
+                "password": _PASS_VALIDO,
                 "empresa_id": empresa_id,
                 "rol": "superadmin",  # rol inválido
             },
@@ -618,7 +624,7 @@ class TestCrearUsuario:
             json={
                 "nombre": "Short",
                 "email": "short@x.com",
-                "password": "1234567",  # menos de 8 caracteres
+                "password": _PASS_CORTA,  # menos de 8 caracteres
                 "empresa_id": empresa_id,
                 "rol": "viewer",
             },
@@ -646,10 +652,10 @@ class TestCors:
         assert "access-control-allow-origin" in r.headers
 
     def test_cors_cabecera_en_respuesta_login(self, api_client, empresa_id, operador):
-        uid, email = operador
+        _, email = operador
         r = api_client.post(
             "/auth/login",
-            json={"email": email, "password": "Password123!"},
+            json={"email": email, "password": _PASS_VALIDO},
             headers={"Origin": "http://localhost:3000"},
         )
         assert "access-control-allow-origin" in r.headers

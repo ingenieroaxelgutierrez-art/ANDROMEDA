@@ -8,6 +8,15 @@ import pytest
 from unittest.mock import MagicMock, patch
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Optional
+
+# ─── Constantes de prueba ─────────────────────────────────
+_PASS_FAKE = "fake-api-key-for-testing"  # noqa: S105
+_CLI_A = 'Cliente A'
+_CLI_B = 'Cliente B'
+_CLI_C = 'Cliente C'
+_VEND_1 = 'Vendedor 1'
+_VEND_2 = 'Vendedor 2'
 
 # Asegurar path del proyecto
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,7 +49,7 @@ def config_odoo():
         url="https://test.odoo.com",
         db="test-db",
         usuario="test@test.com",
-        password="fake-api-key-for-testing"
+        password=_PASS_FAKE
     )
 
 
@@ -59,14 +68,14 @@ def df_ventas():
     return pd.DataFrame({
         'id': [1, 2, 3, 4, 5],
         'name': ['SO001', 'SO002', 'SO003', 'SO004', 'SO005'],
-        'partner_id': ['Cliente A', 'Cliente B', 'Cliente A', 'Cliente C', 'Cliente B'],
+        'partner_id': [_CLI_A, _CLI_B, _CLI_A, _CLI_C, _CLI_B],
         'amount_total': [1500.0, 2300.0, 800.0, 4500.0, 1200.0],
         'date_order': [
             '2026-03-01', '2026-03-02', '2026-03-03',
             '2026-03-04', '2026-03-05'
         ],
         'state': ['sale', 'sale', 'sale', 'done', 'sale'],
-        'user_id': ['Vendedor 1', 'Vendedor 2', 'Vendedor 1', 'Vendedor 2', 'Vendedor 1'],
+        'user_id': [_VEND_1, _VEND_2, _VEND_1, _VEND_2, _VEND_1],
     })
 
 
@@ -88,7 +97,7 @@ def df_facturas():
     return pd.DataFrame({
         'id': [1, 2, 3],
         'name': ['INV/2026/001', 'INV/2026/002', 'INV/2026/003'],
-        'partner_id': ['Cliente A', 'Cliente B', 'Cliente C'],
+        'partner_id': [_CLI_A, _CLI_B, _CLI_C],
         'amount_total': [1500.0, 2300.0, 800.0],
         'amount_residual': [0.0, 1000.0, 800.0],
         'invoice_date': ['2026-03-01', '2026-03-02', '2026-03-03'],
@@ -109,11 +118,11 @@ def df_crm():
     return pd.DataFrame({
         'id': [1, 2, 3],
         'name': ['Oportunidad A', 'Oportunidad B', 'Oportunidad C'],
-        'partner_id': ['Cliente A', 'Cliente B', 'Cliente C'],
+        'partner_id': [_CLI_A, _CLI_B, _CLI_C],
         'stage_id': ['Nuevo', 'Propuesta', 'Ganado'],
         'expected_revenue': [10000.0, 25000.0, 5000.0],
         'probability': [30.0, 70.0, 100.0],
-        'user_id': ['Vendedor 1', 'Vendedor 2', 'Vendedor 1'],
+        'user_id': [_VEND_1, _VEND_2, _VEND_1],
     })
 
 
@@ -125,12 +134,12 @@ class ConsultaFake:
     intencion_principal: str = "consultar_ventas"
     confianza: float = 0.85
     accion_sugerida: str = "consultar_ventas"
-    parametros: dict = None
-    temporalidad: dict = None
+    parametros: Optional[dict] = None
+    temporalidad: Optional[dict] = None
     modelo_sugerido: str = "sale.order"
-    palabras_clave: list = None
-    filtros_detectados: list = None
-    contexto_previo: dict = None
+    palabras_clave: Optional[list] = None
+    filtros_detectados: Optional[list] = None
+    contexto_previo: Optional[dict] = None
 
     def __post_init__(self):
         if self.parametros is None:

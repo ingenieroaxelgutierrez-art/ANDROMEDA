@@ -101,7 +101,7 @@ class ConsultasEspecializadas:
             df = pd.DataFrame(ordenes)
             
             # Limpiar datos
-            df_limpio, confianza, stats = self.limpiador.limpiar_dataframe(df, 'sale.order')
+            df_limpio, confianza, _ = self.limpiador.limpiar_dataframe(df, 'sale.order')
             
             resultado['confianza_datos'] = confianza * 100
             resultado['registros_totales'] = len(ordenes)
@@ -215,7 +215,14 @@ class ConsultasEspecializadas:
         total_anterior = anterior.get('metricas', {}).get('total_ventas', 0)
         
         variacion = self.estadistico.calcular_crecimiento(total_actual, total_anterior)
-        
+
+        if variacion > 0:
+            tendencia_str = 'crecimiento'
+        elif variacion < 0:
+            tendencia_str = 'decremento'
+        else:
+            tendencia_str = 'estable'
+
         return {
             'tipo': 'comparativa',
             'periodo': periodo_nombre,
@@ -231,7 +238,7 @@ class ConsultasEspecializadas:
             },
             'variacion_pct': variacion,
             'diferencia': total_actual - total_anterior,
-            'tendencia': 'crecimiento' if variacion > 0 else ('decremento' if variacion < 0 else 'estable'),
+            'tendencia': tendencia_str,
         }
     
     # ============================================================
@@ -281,10 +288,10 @@ class ConsultasEspecializadas:
                     
                     total_cantidad = float(df_limpio['quantity'].sum())
                     # Extraer IDs numéricos para evitar unhashable
-                    productos_unicos = len(set(
-                        x[0] if isinstance(x, (list, tuple)) else x 
+                    productos_unicos = len({
+                        x[0] if isinstance(x, (list, tuple)) else x
                         for x in df_limpio['product_id'].dropna()
-                    )) if 'product_id' in df_limpio.columns else 0
+                    }) if 'product_id' in df_limpio.columns else 0
                     
                     total_general += total_cantidad
                     total_productos += productos_unicos

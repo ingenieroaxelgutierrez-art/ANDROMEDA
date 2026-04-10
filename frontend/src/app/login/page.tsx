@@ -2,113 +2,100 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { login, ApiError } from "@/lib/api";
 import { guardarTokens } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [loading, setLoading]   = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
     try {
       const tokens = await login(email.trim(), password);
       guardarTokens(tokens.access_token, tokens.refresh_token);
       router.push("/chat");
     } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError("Error de conexión. Por favor intente de nuevo.");
-      }
+      setError(err instanceof ApiError ? err.message : "Error de conexión. Intenta de nuevo.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="flex items-center justify-center min-h-screen bg-gradient-to-br from-andromeda-50 to-andromeda-100">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 space-y-6">
-        {/* Logo / Marca */}
-        <div className="text-center space-y-1">
-          <h1 className="text-3xl font-bold text-andromeda-700 tracking-tight">
-            ANDROMEDA
-          </h1>
-          <p className="text-sm text-gray-500">
-            AI ERP Assistant — Panel de control
+    <main className="relative flex items-center justify-center min-h-screen z-10">
+      {/* Tarjeta glass */}
+      <div className="glass-strong rounded-2xl p-10 w-full max-w-md shadow-2xl space-y-8">
+
+        {/* Marca */}
+        <div className="text-center space-y-2">
+          {/* Orbe logo */}
+          <div className="mx-auto w-16 h-16 rounded-2xl overflow-hidden"
+               style={{ background: "linear-gradient(135deg,#667eea,#764ba2,#f64f59)" }}>
+            <Image src="/logo.png" alt="ANDROMEDA" width={64} height={64} className="w-full h-full object-cover" />
+          </div>
+          <h1 className="text-3xl font-black text-gradient tracking-tight">ANDROMEDA</h1>
+          <p className="text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
+            AI ERP Assistant
           </p>
         </div>
 
         {/* Formulario */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Correo electrónico
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-1.5">
+            <label htmlFor="email" className="block text-xs font-semibold tracking-wider"
+                   style={{ color: "rgba(255,255,255,0.5)" }}>
+              CORREO ELECTRÓNICO
             </label>
             <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg
-                         focus:outline-none focus:ring-2 focus:ring-andromeda-500
-                         focus:border-transparent transition"
+              id="email" type="email" autoComplete="email" required
+              value={email} onChange={(e) => setEmail(e.target.value)}
+              className="input-dark"
               placeholder="usuario@empresa.com"
             />
           </div>
 
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Contraseña
+          <div className="space-y-1.5">
+            <label htmlFor="password" className="block text-xs font-semibold tracking-wider"
+                   style={{ color: "rgba(255,255,255,0.5)" }}>
+              CONTRASEÑA
             </label>
             <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg
-                         focus:outline-none focus:ring-2 focus:ring-andromeda-500
-                         focus:border-transparent transition"
+              id="password" type="password" autoComplete="current-password" required
+              value={password} onChange={(e) => setPassword(e.target.value)}
+              className="input-dark"
               placeholder="••••••••"
             />
           </div>
 
-          {/* Error */}
           {error && (
-            <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg
-                            text-sm text-red-700">
+            <div className="px-4 py-3 rounded-xl text-sm"
+                 style={{ background: "rgba(246,79,89,0.12)", border: "1px solid rgba(246,79,89,0.3)", color: "#ff8a94" }}>
               {error}
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 px-4 bg-andromeda-500 hover:bg-andromeda-600
-                       text-white font-semibold rounded-lg transition
-                       disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {loading ? "Iniciando sesión…" : "Iniciar sesión"}
+          <button type="submit" disabled={loading} className="btn-primary w-full py-3">
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                Iniciando sesión…
+              </span>
+            ) : "Iniciar sesión"}
           </button>
         </form>
 
-        <p className="text-center text-xs text-gray-400">
+        <p className="text-center text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>
           ANDROMEDA {new Date().getFullYear()} · Acceso restringido
         </p>
       </div>

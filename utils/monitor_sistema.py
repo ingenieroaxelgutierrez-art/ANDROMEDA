@@ -288,7 +288,7 @@ class MonitorSistema:
             logger.error(f"Error exportando CSV: {e}")
             return None
     
-    def generar_reporte(self, output_path: str = "logs/reporte_sistema.txt") -> str:
+    def generar_reporte(self, output_path: str = "logs/reporte_sistema.txt") -> Optional[str]:
         """Genera reporte completo del sistema."""
         try:
             with open(output_path, 'w', encoding='utf-8') as f:

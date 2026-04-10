@@ -1598,7 +1598,6 @@ class OdooAIProV5:
         mensaje_original = pendiente['mensaje_original']
         self.confirmacion_critica_pendiente = None
 
-        hubo_error = False
         try:
             respuesta, df = self._ejecutar_desde_gestor_agentes(
                 consulta,
@@ -1618,7 +1617,6 @@ class OdooAIProV5:
                 except Exception:
                     pass
         except Exception as e:
-            hubo_error = True
             respuesta = f"Error al ejecutar la consulta crítica confirmada: {str(e)}"
             df = None
             if self.gestor_agentes:
@@ -1658,7 +1656,6 @@ class OdooAIProV5:
                 tiempo_ms=duracion_s * 1000,
                 exitosa=True
             )
-
         return historial, tabla_html, f"✓ {consulta.accion_sugerida} (confirmada)"
 
     def _generar_fallback_estructurado(self, consulta: ConsultaEntendida) -> str:
@@ -1978,19 +1975,19 @@ class OdooAIProV5:
         patron_rango = re.compile(r'(\d{4})\s*(?:y|a|al|hasta)\s*(\d{4})')
         match_rango = patron_rango.search(mensaje_lower)
         if match_rango:
-            año_inicio = int(match_rango.group(1))
-            año_fin = int(match_rango.group(2))
-            if año_fin < año_inicio:
-                año_inicio, año_fin = año_fin, año_inicio
-            return {'fecha_inicio': f"{año_inicio}-01-01", 'fecha_fin': f"{año_fin}-12-31"}
+            anio_inicio = int(match_rango.group(1))
+            anio_fin = int(match_rango.group(2))
+            if anio_fin < anio_inicio:
+                anio_inicio, anio_fin = anio_fin, anio_inicio
+            return {'fecha_inicio': f"{anio_inicio}-01-01", 'fecha_fin': f"{anio_fin}-12-31"}
         
         # Buscar año específico "año 2025", "todo 2025", "2025"
         patron_anio = re.compile(r'(?:todo\s+)?(?:el\s+)?(?:a[ñn]o\s+)?(\d{4})')
         match_anio = patron_anio.search(mensaje_lower)
         if match_anio:
-            año = int(match_anio.group(1))
-            if 2000 <= año <= 2100:
-                return {'fecha_inicio': f"{año}-01-01", 'fecha_fin': f"{año}-12-31"}
+            anio = int(match_anio.group(1))
+            if 2000 <= anio <= 2100:
+                return {'fecha_inicio': f"{anio}-01-01", 'fecha_fin': f"{anio}-12-31"}
         
         # Patrones de meses
         meses = {
@@ -2001,13 +1998,13 @@ class OdooAIProV5:
         for nombre_mes, num_mes in meses.items():
             if nombre_mes in mensaje_lower:
                 # Buscar año asociado
-                match_año = re.search(r'(\d{4})', mensaje_lower)
-                año = int(match_año.group(1)) if match_año else hoy.year
-                primer_dia = datetime(año, num_mes, 1)
+                match_anio_mes = re.search(r'(\d{4})', mensaje_lower)
+                anio = int(match_anio_mes.group(1)) if match_anio_mes else hoy.year
+                primer_dia = datetime(anio, num_mes, 1)
                 if num_mes == 12:
-                    ultimo_dia = datetime(año + 1, 1, 1) - timedelta(days=1)
+                    ultimo_dia = datetime(anio + 1, 1, 1) - timedelta(days=1)
                 else:
-                    ultimo_dia = datetime(año, num_mes + 1, 1) - timedelta(days=1)
+                    ultimo_dia = datetime(anio, num_mes + 1, 1) - timedelta(days=1)
                 return {'fecha_inicio': primer_dia.strftime('%Y-%m-%d'), 'fecha_fin': ultimo_dia.strftime('%Y-%m-%d')}
         
         if 'hoy' in mensaje_lower:
@@ -2336,7 +2333,7 @@ class OdooAIProV5:
                 
             except Exception as e:
                 import traceback
-                error_detalle = traceback.format_exc()
+                traceback.print_exc()
                 print(f"Error en consulta: {e}")
                 print(f"   Acción: {consulta.accion_sugerida}")
                 print(f"   Mensaje: {mensaje[:100]}")
@@ -2562,7 +2559,7 @@ class OdooAIProV5:
                         f"| {nombre} | **{serie.sum():,.0f}** | {serie.mean():,.1f} | {serie.min():,.0f} - {serie.max():,.0f} |"
                     )
         else:
-            columnas = [str(col) for col in list(df.columns[:5])]
+            columnas = [str(col) for col in df.columns[:5]]
             if columnas:
                 lineas.append("")
                 lineas.append(f"**Campos disponibles:** {', '.join(columnas)}")
@@ -2772,7 +2769,7 @@ class OdooAIProV5:
         with gr.Blocks(title=f"{self.NOMBRE} v{self.VERSION}", theme=gr.themes.Base()) as app:
             
             # Estado para el panel de acciones
-            panel_abierto = gr.State(False)
+            _panel_abierto = gr.State(False)
             
             # ============== LAYOUT PRINCIPAL ==============
             with gr.Row(elem_classes=["main-layout"]):
@@ -3369,7 +3366,7 @@ class OdooAIProV5:
                     
                     if texto:
                         # Procesar el mensaje como si fuera texto
-                        h_new, t, s = self.procesar_mensaje(texto, historial)
+                        h_new, t, _ = self.procesar_mensaje(texto, historial)
                         return h_new, t, f"Reconocido: \"{texto}\"", texto
                     else:
                         return historial, "", "No se pudo reconocer el audio", ""

@@ -24,7 +24,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Config
-from app.api.routers import auth, chat, reportes, salud, configuracion, admin
+from app.api.routers import auth, chat, reportes, salud, configuracion, admin, manuales
 from app.api.middlewares.logging import log_requests_middleware
 
 
@@ -72,4 +72,5 @@ app.include_router(chat.router)            # POST /chat
 app.include_router(reportes.router)        # GET /reportes  POST /reportes/generar
 app.include_router(configuracion.router)   # GET|POST|PUT|DELETE /configuracion (Fase 4)
 app.include_router(admin.router)           # GET /admin/metricas (Fase 4)
+app.include_router(manuales.router)        # GET /manuales/imagenes/{filename}
 
