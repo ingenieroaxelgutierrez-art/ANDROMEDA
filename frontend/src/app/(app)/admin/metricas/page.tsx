@@ -63,7 +63,7 @@ export default function AdminMetricasPage() {
             <MetricsCard label="Consultas con error" value={metricas.consultas_error.toLocaleString()} colorClass="text-rose-400" />
             <MetricsCard
               label="Tasa de error"
-              value={`${(metricas.tasa_error * 100).toFixed(1)}%`}
+              value={`${(metricas.tasa_error).toFixed(2)}%`}
               colorClass={metricas.tasa_error > 0.05 ? "text-rose-400" : "text-emerald-400"}
             />
             <MetricsCard

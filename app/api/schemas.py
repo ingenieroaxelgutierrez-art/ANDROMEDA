@@ -169,7 +169,7 @@ class MetricasSaaS(BaseModel):
     duracion_promedio_ms: int = 0
     por_tipo: Dict[str, int] = Field(default_factory=dict)
     por_dia: Dict[str, int] = Field(default_factory=dict)
-    empresas_activas: Optional[List[str]] = None
+    empresas_activas: int = 0
 
 
 # ── Auth (Fase 5 — JWT) ────────────────────────────────────────────────────

@@ -44,7 +44,7 @@ export default function AdminDashboardPage() {
     },
     {
       label: "Tasa de error",
-      value: dash ? `${(dash.tasa_error * 100).toFixed(1)}%` : (metricas ? `${(metricas.tasa_error * 100).toFixed(1)}%` : "—"),
+      value: dash ? `${(dash.tasa_error).toFixed(2)}%` : (metricas ? `${(metricas.tasa_error).toFixed(2)}%` : "—"),
       sub: "Últimas 24 h",
       color: "text-rose-400",
     },

@@ -190,10 +190,14 @@ def obtener_metricas(
                 )
                 por_dia[dia] = por_dia.get(dia, 0) + 1
 
-            # Empresas con actividad (solo en modo global)
-            empresas_activas: Optional[List[str]] = None
+            # Empresas activas (solo en modo global — conteo real desde tabla Empresa)
+            empresas_activas: int = 0
             if not empresa_id:
-                empresas_activas = list({r.empresa_id for r in registros if r.empresa_id})
+                try:
+                    from models.db_saas import Empresa
+                    empresas_activas = session.query(Empresa).filter(Empresa.activa == True).count()
+                except Exception:
+                    empresas_activas = len({r.empresa_id for r in registros if r.empresa_id})
 
             return {
                 "empresa_id": empresa_id,
@@ -208,7 +212,7 @@ def obtener_metricas(
                 "duracion_promedio_ms": promedio_ms,
                 "por_tipo": por_tipo,
                 "por_dia": por_dia,
-                "empresas_activas": empresas_activas,
+                "empresas_activas": empresas_activas,  # int: número de empresas con actividad
             }
         finally:
             session.close()
@@ -235,5 +239,5 @@ def _metricas_vacias(
         "duracion_promedio_ms": 0,
         "por_tipo": {},
         "por_dia": {},
-        "empresas_activas": [],
+        "empresas_activas": 0,
     }
