@@ -345,7 +345,19 @@ class EjecutorAcciones:
 
                 if datos.get('por_cliente'):
                     df = pd.DataFrame(datos['por_cliente'])
-    
+
+        else:
+            # Acción no reconocida o consulta_general — respuesta orientativa
+            accion_leg = accion.replace('_', ' ').title() if accion else 'desconocida'
+            respuesta = (
+                f"No encontré un ejecutor específico para la acción **{accion_leg}**. "
+                "Por favor reformula tu consulta indicando qué datos necesitas. "
+                "Ejemplos: _'ventas de este mes'_, _'stock disponible'_, _'facturas pendientes'_, "
+                "_'top clientes'_, _'predicción de ventas'_."
+            )
+
+        return respuesta, df
+
     def _generar_tendencia(self, consulta=None, mensaje: str = '') -> Tuple[str, pd.DataFrame]:
         """Genera análisis de tendencia de ventas con desglose inteligente según contexto."""
         mensaje_lower = (mensaje or '').lower()
