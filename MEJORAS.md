@@ -1,7 +1,7 @@
-# MEJORAS — ANDROMEDA v9.0
+# MEJORAS — ANDROMEDA v10.0
 
 > Registro técnico de mejoras implementadas, hallazgos de auditoría y decisiones de diseño.  
-> Última actualización: **v9.0 (post Fases 0–5)**
+> Última actualización: **v10.0 (13 de abril de 2026)**
 
 > **Historial por fase:**
 > - **v7.5 / Pre-Fases** — 25 mejoras de seguridad, calidad y estabilidad (secciones 1–7)
@@ -11,6 +11,7 @@
 > - **Fase 3** — Capa API REST FastAPI (`app/api/`) + cliente Gradio HTTP (`views/gradio_cliente.py`) + 56 tests API
 > - **Fase 4** — Logging SaaS + Multi-Empresa: BD SaaS (SQLAlchemy + Fernet), CRUD `/configuracion`, multi-versión Odoo 14–19+, contexto de sesión server-side, métricas `/admin/metricas` → **695 tests total**
 > - **Fase 5** — Autenticación JWT, frontend Next.js 14, CORS → **695 tests (+50 test_auth.py)**
+> - **Post-lanzamiento** — Vistas SaaS multi-rol, rutas admin/agente completas, precisión de orquestación de agentes
 
 ---
 
@@ -284,3 +285,41 @@ Decisiones técnicas:
 | 30 | Frontend Next.js 14 con auth JWT | §10 | Feature | ✅ |
 
 **Total: 30 mejoras · Críticas: 6 · Altas: 9 · Medias: 11 · Bajas: 3 · Features: 1**
+
+---
+
+## 11. POST-LANZAMIENTO (v10.0 — abril 2026)
+
+### ✅ Sistema multi-rol completo (admin / agente / usuario)
+**Archivos:** `frontend/src/app/(app)/admin/*`, `frontend/src/app/(app)/agente/*`, `frontend/src/lib/auth.ts`  
+**Problema:** El frontend sólo tenía tres páginas genéricas sin control de acceso por rol.  
+**Solución:** Tres secciones independientes con guards de ruta (`admin/layout.tsx`, `agente/layout.tsx`), NavBar dinámica con links y badge de rol, y login que redirige automáticamente según el rol del token JWT.  
+**Vistas admin:** Dashboard KPIs globales, Chat, CRUD Empresas, CRUD Usuarios, Métricas sistema, Config LLM/Odoo/sesiones (6 páginas).  
+**Vistas agente:** Chat, Métricas de empresa propia, Config Odoo propia (3 páginas).  
+**Vistas usuario:** Chat, Perfil personal (2 páginas).
+
+### ✅ Rutas backend SaaS completas
+**Archivos:** `app/api/routers/admin.py`, `app/api/routers/agente.py`, `app/api/routers/auth.py`, `app/api/schemas.py`  
+**Problema:** El backend sólo exponía `GET /admin/metricas`; el frontend llamaba a 12 rutas inexistentes → 404 en todas las páginas.  
+**Solución:**
+- `admin.py` expandido: `GET /admin/dashboard` (KPIs), CRUD `/admin/empresas`, CRUD `/admin/usuarios`, `GET|PUT /admin/configuracion-sistema` (JSON persistido en `data/config_sistema.json`).
+- Nuevo `agente.py`: `GET|PUT /agente/empresa` (empresa propia del agente), `GET /agente/metricas`.
+- `auth.py`: `PUT /auth/perfil` (nombre, email, cambio de contraseña con verificación de contraseña actual).
+- Schemas nuevos: `DashboardAdmin`, `UsuarioRespuesta`, `UsuarioActualizar`, `PerfilActualizar`, `ConfigSistema`.
+- Todos los endpoints admin protegidos con dependencia `_solo_admin` (verifica `rol == "admin"` en JWT).
+
+### ✅ Roles BD alineados con el frontend
+**Archivo:** `models/db_saas.py`, `app/api/schemas.py`  
+**Problema:** El enum `rol_usuario` en SQLAlchemy era `admin/operador/viewer`; el frontend y el pipeline de autenticación usaban `admin/agente/usuario` → mismatch silencioso.  
+**Solución:** Enum actualizado a `("admin", "agente", "usuario")`, default `"agente"`. Validadores Pydantic actualizados en `UsuarioCrearRequest` y `UsuarioActualizar`.  
+**Nota migración:** BD existentes con enum antiguo deben recrarse (`data/andromeda_saas.db` se regenera al arrancar si no existe).
+
+### ✅ Precisión de orquestación multi-agente mejorada
+**Archivos:** `services/nlp/nlp_avanzado.py`, `services/agents/mapeador_consultas.py`, `services/actions/ejecutor_acciones.py`, `services/agents/multi_agente.py`  
+**Problema:** Los agentes producían respuestas genéricas o incompletas para intenciones específicas; los parámetros de consulta no se propagaban correctamente a los ejecutores.  
+**Solución:** 107+ mapeos directos de acción revisados; 212+ keywords de routing añadidos; validación de parámetros `_advertencias_de_parametros()` añadida a los 12 agentes de dominio; acción `kpi_ticket_promedio` completada con tabla de 6 métricas, insights automáticos y manejo de error.
+
+### ✅ `kpi_ticket_promedio` completado
+**Archivo:** `services/actions/ejecutor_acciones.py`  
+**Problema:** La acción `kpi_ticket_promedio` estaba truncada — sólo declaraba `respuesta = f"""## Ticket Promedio"""` sin contenido.  
+**Solución:** Implementación completa: llama a `analisis_ventas_completo()` (método correcto), construye tabla Markdown con ticket promedio, órdenes totales, total ventas, orden más alta/baja, tendencia con icono `📈/📉/➖`, sección de insights automáticos, y asigna `df` desde `por_cliente` para la tabla interactiva. Manejo de error si no hay datos en el período.

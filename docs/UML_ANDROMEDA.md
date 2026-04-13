@@ -1,10 +1,10 @@
 # UML ANDRÓMEDA — Arquitectura del Sistema
 
 > **Fecha:** Abril 2026  
-> **Versión:** 9.0  
+> **Versión:** 10.0  
 > **Propósito:** Documentar la arquitectura completa del sistema para referencia y onboarding.  
 > **Visualización:** VS Code (extensión Mermaid), GitHub, Notion, draw.io  
-> **Última actualización:** Fases 0–5 completadas — 695 tests — API REST FastAPI + JWT Auth + Frontend Next.js 14  
+> **Última actualización:** v10.0 — Post-lanzamiento: arquitectura SaaS multi-rol (admin/agente/usuario), 14 nuevas rutas API, schemas SaaS, frontend Next.js 14 con 11 vistas por rol  
 
 ---
 
@@ -17,6 +17,8 @@
 5. [Diagrama de Componentes](#5--diagrama-de-componentes)
 6. [Resumen de Capas](#6--resumen-de-capas)
 7. [Patrones Arquitectónicos](#7--patrones-arquitectónicos)
+8. [Diagrama de Clases — Capa SaaS v10.0](#8--diagrama-de-clases--capa-saas-v100)
+9. [Diagrama de Secuencia — Autenticación SaaS Multi-Rol](#9--diagrama-de-secuencia--autenticación-saas-multi-rol)
 
 ---
 
@@ -1261,9 +1263,9 @@ graph TB
 | Capa | Archivos | Clases Principales | Responsabilidad |
 |------|----------|-------------------|----------------|
 | **Entrada** | `main.py`, `app/config.py`, `app/logging_config.py` | `Config`, `ConfiguracionOdoo`, `LoggingConfig`, `FiltroCredenciales` | Arranque, configuración, logging centralizado con rotación y filtro de credenciales |
-| **API REST** | `app/api/` (Fases 3–5) | `FastAPI`, routers `chat`, `salud`, `reportes`, `auth`, `schemas.py`, `dependencies.py` | Capa HTTP REST en `127.0.0.1:8000`, esquemas Pydantic, inyección de dependencias, middleware de logging, auth JWT |
-| **Auth** | `app/api/auth/jwt_utils.py`, `app/api/routers/auth.py` (Fase 5) | `JWTUtils`, router `/auth/*` | JWT HS256, access (15 min) + refresh (7 días), validación de tipo cruzado, login timing-safe, RBAC `require_rol` |
-| **Frontend** | `frontend/src/` (Fase 5) | `LoginPage`, `ChatPage`, `MetricasPage`, `NavBar`, `auth.ts`, `api.ts` | SPA Next.js 14, TypeScript 5.5, Tailwind CSS 3.4, App Router, rutas protegidas, retry 401, recharts |
+| **API REST** | `app/api/` (Fases 3–5 + v10.0) | `FastAPI`, routers `chat`, `salud`, `reportes`, `auth`, `admin`, `agente`, `schemas.py`, `dependencies.py` | Capa HTTP REST en `127.0.0.1:8000`, 36 rutas totales. v10.0: `/admin/dashboard`, CRUD `/admin/empresas`, CRUD `/admin/usuarios`, `GET/PUT /admin/configuracion-sistema`, `GET/PUT /agente/empresa`, `GET /agente/metricas`, `PUT /auth/perfil` |
+| **Auth** | `app/api/auth/jwt_utils.py`, `app/api/routers/auth.py` (Fase 5 + v10.0) | `JWTUtils`, router `/auth/*` | JWT HS256, access (15 min) + refresh (7 días), validación de tipo cruzado, login timing-safe, RBAC `require_rol`. v10.0: `PUT /auth/perfil` (cambio nombre/email/password con verificación previa), dependencias `_solo_admin()` y `_req_agente()`, roles: `admin / agente / usuario` |
+| **Frontend** | `frontend/src/` (Fase 5 + v10.0) | `LoginPage`, `NavBar`, `auth.ts`, `api.ts`, vistas admin (6), vistas agente (3), vistas usuario (2) | SPA Next.js 14, TypeScript 5.5, Tailwind CSS 3.4, App Router. v10.0: 11 vistas SaaS multi-rol, `NavBar` role-aware (sidebar dinámico con badge), guards de layout por rol, `api.ts` con 15 funciones SaaS, `auth.ts`: `guardarRol()`/`getRol()`/`clearTokens()` |
 | **Presentación** | `views/interfaz_v5.py`, `views/gradio_cliente.py`, `views/generador_reportes.py`, `services/formatters/formateador_respuestas.py`, `services/agents/ejecutores.py` | `InterfazAndromeda`, `GeneradorReportes`, `FormateadorRespuestas`, `EjecutoresAgente` | UI Gradio (validación entrada + rate limiting) · cliente HTTP Gradio · formateo delegado (41 métodos) · ejecutores dedicados (12) · pipeline anti-alucinación |
 | **Core** | `core/bot_principal.py`, `cerebro_andromeda.py`, `motor_bi_experto.py` | `OdooBotPro`, `CerebroAndromeda`, `MotorBIExperto` | Motor principal, análisis, BI |
 | **NLP** | `services/nlp/*.py` (5 archivos) | `MotorNLPAvanzado`, `MotorNLP`, `CerebroNLP`, `MotorEmbeddings`, `MotorEmpatico` | 90+ intenciones, entidades, embeddings semánticos (`paraphrase-multilingual-MiniLM-L12-v2`, 384d), cache SHA-256 auto-invalidante, empatía |
@@ -1275,7 +1277,7 @@ graph TB
 | **Memoria** | `services/memory/*.py` (3 archivos) | `MemoriaVectorial`, `MemoriaJerarquica`, `GrafoConocimiento` | ChromaDB con EF explícita (lazy), 6 colecciones, purga selectiva, grafo NetworkX (14 nodos / 9 relaciones), poda proactiva, auto-save determinístico |
 | **Conocimiento** | `services/knowledge/*.py` | `ProcesadorManuales` | Indexación de manuales .docx → JSON + imágenes |
 | **Reportes** | `services/reports/*.py` | `GeneradorGraficas`, `GeneradorPDF` | Plotly (interactivas) + Matplotlib (estáticas) + ReportLab (PDF) |
-| **Datos / SaaS** | `models/*.py` | `ConectorOdoo`, `ModeloOdoo`, `Empresa`, `Usuario`, `SesionLog`, `SesionContexto` | Conexión Odoo RPC, cache, 40+ modelos Odoo; ORM SaaS SQLAlchemy (Fernet para credenciales) |
+| **Datos / SaaS** | `models/*.py` | `ConectorOdoo`, `ModeloOdoo`, `EmpresaSaaS`, `UsuarioSaaS`, `SesionLog`, `SesionContexto` | Conexión Odoo RPC, cache, 40+ modelos Odoo; ORM SaaS SQLAlchemy (Fernet para credenciales). v10.0: enum `rol_usuario` = `admin/agente/usuario`; `empresa_id` Optional en `UsuarioActual`; config sistema JSON en `data/config_sistema.json` |
 | **Utilidades** | `utils/*.py` (10 archivos) | `ValidadorDatos`, `ValidadorRespuestas`, `ValidadorQueries`, `ConsultasEspecializadas`, `NormalizadorPrompt`, `Seguridad` | Validación, queries especializadas, sandbox de queries, logging SQLite |
 
 ---
@@ -1322,4 +1324,272 @@ A *-- B    Composición (A contiene B, B no existe sin A)
 A o-- B    Agregación (A usa B, B puede existir solo)
 A --> B    Dependencia / retorna
 A --|> B   Herencia (A extiende B)
+```
+
+---
+
+## 8. 📐 Diagrama de Clases — Capa SaaS v10.0
+
+> Muestra los modelos DB, schemas Pydantic y routers añadidos en v10.0 para la arquitectura SaaS multi-rol.
+
+```mermaid
+classDiagram
+    direction TB
+
+    %% ═══════════════════════════════════════════
+    %% MODELOS ORM (models/db_saas.py)
+    %% ═══════════════════════════════════════════
+
+    class EmpresaSaaS {
+        +str id  (UUID)
+        +str nombre
+        +str odoo_url
+        +str odoo_db
+        +str odoo_usuario
+        +bytes odoo_password_enc  (Fernet)
+        +bool activa
+        +datetime creada_en
+    }
+
+    class UsuarioSaaS {
+        +str id  (UUID)
+        +str nombre
+        +str email
+        +str password_hash  (pbkdf2_sha256)
+        +str rol  (admin|agente|usuario)
+        +str empresa_id  (FK → EmpresaSaaS, nullable)
+        +bool activo
+        +datetime creado_en
+    }
+
+    class SesionLog {
+        +str id
+        +str usuario_id  (FK)
+        +str empresa_id  (FK)
+        +str accion
+        +datetime ts
+    }
+
+    EmpresaSaaS "1" o-- "0..*" UsuarioSaaS : tiene
+    UsuarioSaaS "1" o-- "0..*" SesionLog : genera
+
+    %% ═══════════════════════════════════════════
+    %% SCHEMAS PYDANTIC (app/api/schemas.py)  v10.0
+    %% ═══════════════════════════════════════════
+
+    class DashboardAdmin {
+        +int empresas_total
+        +int empresas_activas
+        +int usuarios_total
+        +int usuarios_activos
+        +int consultas_hoy
+        +int consultas_mes
+        +float tasa_error
+        +float uptime_pct
+    }
+
+    class UsuarioRespuesta {
+        +str id
+        +str nombre
+        +str email
+        +str rol
+        +str empresa_id
+        +str empresa_nombre
+        +bool activo
+        +datetime creado_en
+    }
+
+    class UsuarioActualizar {
+        +Optional~str~ nombre
+        +Optional~str~ email
+        +Optional~str~ password
+        +Optional~str~ rol
+        +Optional~str~ empresa_id
+        +Optional~bool~ activo
+    }
+
+    class PerfilActualizar {
+        +Optional~str~ nombre
+        +Optional~str~ email
+        +Optional~str~ password_actual
+        +Optional~str~ password_nuevo
+    }
+
+    class ConfigSistema {
+        +str llm_provider
+        +str llm_model
+        +int max_tokens
+        +float temperatura
+        +int odoo_timeout_seg
+        +int max_reintentos
+        +int session_ttl_min
+        +str log_level
+    }
+
+    %% ═══════════════════════════════════════════
+    %% ROUTERS (app/api/routers/)  v10.0
+    %% ═══════════════════════════════════════════
+
+    class AdminRouter {
+        <<FastAPI Router>>
+        +prefix: /admin
+        +tags: admin
+        -_solo_admin(token) payload
+        +GET /dashboard → DashboardAdmin
+        +GET /empresas → List~EmpresaRespuesta~
+        +POST /empresas → EmpresaRespuesta
+        +PUT /empresas/{id} → EmpresaRespuesta
+        +DELETE /empresas/{id} → dict
+        +GET /usuarios → List~UsuarioRespuesta~
+        +POST /usuarios → UsuarioRespuesta
+        +PUT /usuarios/{id} → UsuarioRespuesta
+        +DELETE /usuarios/{id} → dict
+        +GET /metricas → dict
+        +GET /configuracion-sistema → ConfigSistema
+        +PUT /configuracion-sistema → ConfigSistema
+    }
+
+    class AgenteRouter {
+        <<FastAPI Router>>
+        +prefix: /agente
+        +tags: agente
+        -_req_agente(token) payload
+        +GET /empresa → EmpresaRespuesta
+        +PUT /empresa → EmpresaRespuesta
+        +GET /metricas → dict
+    }
+
+    class AuthRouter {
+        <<FastAPI Router (v10.0 ext.)>>
+        +prefix: /auth
+        +POST /login → TokenPair
+        +POST /refresh → TokenPair
+        +GET /me → UsuarioActual
+        +PUT /perfil → UsuarioActual
+    }
+
+    AdminRouter --> DashboardAdmin : returns
+    AdminRouter --> UsuarioRespuesta : returns
+    AdminRouter --> ConfigSistema : reads/writes
+    AdminRouter --> EmpresaSaaS : queries
+    AdminRouter --> UsuarioSaaS : queries
+    AgenteRouter --> EmpresaSaaS : queries
+    AuthRouter --> PerfilActualizar : accepts
+    AuthRouter --> UsuarioSaaS : updates
+
+    %% ═══════════════════════════════════════════
+    %% FRONTEND COMPONENTS (frontend/src/)  v10.0
+    %% ═══════════════════════════════════════════
+
+    class NavBar {
+        <<Next.js Component>>
+        +LINKS_ADMIN: 6 links
+        +LINKS_AGENTE: 3 links
+        +LINKS_USUARIO: 2 links
+        +rol: string
+        +render() sidebar dinámico + badge
+    }
+
+    class AdminLayout {
+        <<Next.js Layout>>
+        +requireRol: admin
+        +pages: dashboard, chat, empresas, usuarios, metricas, configuracion
+    }
+
+    class AgenteLayout {
+        <<Next.js Layout>>
+        +requireRol: agente|admin
+        +pages: chat, metricas, configuracion
+    }
+
+    class UsuarioLayout {
+        <<Next.js Layout>>
+        +requireRol: usuario|agente|admin
+        +pages: chat, perfil
+    }
+
+    AdminLayout --> NavBar : uses
+    AgenteLayout --> NavBar : uses
+    UsuarioLayout --> NavBar : uses
+    AdminLayout --> AdminRouter : calls
+    AgenteLayout --> AgenteRouter : calls
+```
+
+---
+
+## 9. 🔄 Diagrama de Secuencia — Autenticación SaaS Multi-Rol
+
+> Muestra el flujo completo desde login hasta enrutamiento por rol en el frontend Next.js 14.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Browser
+    participant NextJS as Next.js (frontend)
+    participant API as FastAPI (:8000)
+    participant DB as SQLite (SaaS DB)
+
+    %% ── LOGIN ──────────────────────────────────────────
+    Browser->>NextJS: POST /login (email + password)
+    NextJS->>API: POST /auth/login {email, password}
+    API->>DB: SELECT usuario WHERE email=? AND activo=true
+    DB-->>API: UsuarioSaaS row
+    API->>API: verify pbkdf2_sha256(password, hash)
+    alt credenciales válidas
+        API->>API: crear JWT access (15 min) + refresh (7 días)<br/>claims: sub=id, rol=admin|agente|usuario, empresa_id
+        API-->>NextJS: {access_token, refresh_token, token_type}
+        NextJS->>NextJS: guardarTokens() + guardarRol(rol)
+        alt rol == "admin"
+            NextJS-->>Browser: redirect /admin/dashboard
+        else rol == "agente"
+            NextJS-->>Browser: redirect /agente/chat
+        else rol == "usuario"
+            NextJS-->>Browser: redirect /chat
+        end
+    else credenciales inválidas
+        API-->>NextJS: 401 Unauthorized
+        NextJS-->>Browser: mostrar error "Credenciales incorrectas"
+    end
+
+    %% ── ACCESO A RUTA PROTEGIDA ─────────────────────────
+    Browser->>NextJS: GET /admin/dashboard
+    NextJS->>NextJS: layout.tsx → getMe() con Authorization Bearer
+    NextJS->>API: GET /auth/me
+    API->>API: _solo_admin(): decode JWT, verificar rol == "admin"
+    alt token válido y rol admin
+        API-->>NextJS: UsuarioActual {id, nombre, rol, empresa_id}
+        NextJS-->>Browser: render DashboardAdmin page
+    else token expirado
+        NextJS->>API: POST /auth/refresh {refresh_token}
+        API-->>NextJS: nuevo access_token
+        NextJS->>API: GET /auth/me (retry)
+        API-->>NextJS: UsuarioActual
+        NextJS-->>Browser: render DashboardAdmin page
+    else rol incorrecto (agente intenta /admin)
+        NextJS-->>Browser: redirect /agente/chat (403 guard)
+    end
+
+    %% ── LLAMADA API ADMIN ──────────────────────────────
+    Browser->>NextJS: acción: cargar KPIs globales
+    NextJS->>API: GET /admin/dashboard [Bearer token]
+    API->>API: _solo_admin() dependency
+    API->>DB: COUNT empresas_activas, usuarios_activos, etc.
+    DB-->>API: agregados
+    API-->>NextJS: DashboardAdmin JSON
+    NextJS-->>Browser: render métricas en tarjetas
+
+    %% ── ACTUALIZACIÓN DE PERFIL ─────────────────────────
+    Browser->>NextJS: formulario perfil (nombre, email, nueva contraseña)
+    NextJS->>API: PUT /auth/perfil {nombre, email, password_actual, password_nuevo}
+    API->>DB: SELECT usuario WHERE id = sub(JWT)
+    DB-->>API: UsuarioSaaS row
+    API->>API: verify password_actual contra hash existente
+    alt password_actual correcto
+        API->>DB: UPDATE nombre/email/password_hash
+        API-->>NextJS: UsuarioActual actualizado
+        NextJS-->>Browser: "Perfil actualizado correctamente"
+    else password_actual incorrecto
+        API-->>NextJS: 400 Bad Request "Contraseña actual incorrecta"
+        NextJS-->>Browser: mostrar error en formulario
+    end
 ```

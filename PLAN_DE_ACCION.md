@@ -390,4 +390,28 @@
 
 ---
 
+## 🚀 POST-LANZAMIENTO — Mejoras Continuas (v10.0 · abril 2026)
+
+### Completadas
+
+| Área | Cambio | Severidad |
+|------|--------|-----------|
+| Backend | 14 rutas SaaS nuevas (admin CRUD, agente, PUT /auth/perfil) | CRÍTICA |
+| Backend | Roles DB actualizados: `admin/agente/usuario` | CRÍTICA |
+| Frontend | Vistas SaaS multi-rol: 11 páginas nuevas + layouts + guards | FEATURE |
+| Frontend | NavBar role-aware (6 links admin, 3 agente, 2 usuario) | ALTA |
+| Orquestador | `kpi_ticket_promedio` — implementación completa | MEDIA |
+| Schemas | `DashboardAdmin`, `UsuarioRespuesta`, `PerfilActualizar`, `ConfigSistema` | ALTA |
+| Config | `data/config_sistema.json` para configuración LLM/Odoo persistida | MEDIA |
+
+### En progreso / backlog
+
+- [ ] Tests para routers `admin.py` y `agente.py` (actualmente 0 tests de rutas nuevas)
+- [ ] Schema de migración para BD existentes con rol enum antiguo
+- [ ] Paginación en `GET /admin/usuarios` y `GET /admin/empresas`
+- [ ] Caché de métricas en `/admin/dashboard` (actualmente consulta BD en cada llamada)
+- [ ] Refresh token automático en el frontend (actualmente fuerza re-login al expirar)
+
+---
+
 *Este documento es vivo. Actualizar el estado de cada tarea a medida que se complete.*

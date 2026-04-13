@@ -255,7 +255,7 @@ export async function getMe(): Promise<UsuarioActual> {
 export async function enviarMensaje(
   mensaje: string,
   sessionId: string,
-  empresaId: string
+  empresaId?: string
 ): Promise<RespuestaChat> {
   const res = await _fetch("/chat", {
     method: "POST",

@@ -36,6 +36,7 @@ from app.api.schemas import (
     TokenResponse,
     UsuarioActual,
     UsuarioCrearRequest,
+    PerfilActualizar,
 )
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
@@ -226,5 +227,48 @@ def crear_usuario(
         session.commit()
         session.refresh(nuevo)
         return UsuarioActual(**nuevo.to_dict())
+    finally:
+        session.close()
+
+
+@router.put("/perfil", summary="Actualizar perfil propio")
+def actualizar_perfil(
+    datos: PerfilActualizar,
+    payload: Annotated[dict, Depends(_get_token_payload)],
+) -> UsuarioActual:
+    """Permite al usuario autenticado cambiar su nombre, email o contraseña."""
+    from models.db_saas import get_session, Usuario, inicializar_db
+    inicializar_db()
+    session = get_session()
+    try:
+        usuario = session.query(Usuario).filter(
+            Usuario.id == payload["sub"], Usuario.activo == True
+        ).first()
+        if not usuario:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        if datos.nombre is not None:
+            usuario.nombre = datos.nombre
+
+        if datos.email is not None:
+            if session.query(Usuario).filter(
+                Usuario.email == datos.email, Usuario.id != usuario.id
+            ).first():
+                raise HTTPException(status_code=409, detail="Email ya en uso")
+            usuario.email = datos.email
+
+        if datos.password_nuevo is not None:
+            if not datos.password_actual or not usuario.check_password(datos.password_actual):
+                raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
+            usuario.set_password(datos.password_nuevo)
+
+        session.commit()
+        session.refresh(usuario)
+        return UsuarioActual(**usuario.to_dict())
+    except HTTPException:
+        raise
+    except Exception as exc:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=f"Error actualizando perfil: {exc}") from exc
     finally:
         session.close()

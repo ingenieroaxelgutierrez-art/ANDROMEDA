@@ -1,6 +1,7 @@
-# ANDROMEDA — Conversational AI Agent for Odoo ERP
+# ANDROMEDA — A PREDICTIVA EMPRESARIAL PARA ODOO
+# Advanced Neural Data Resource for Operations, Management & Enterprise Decision Analytics
 
-> **v9.0** · Fases 0–5 completadas · **695 tests** · Python 3.11 · FastAPI 0.133 · Next.js 14
+> **v10.0** · Fases 0–5 completadas · Post-lanzamiento activo · **695 tests** · Python 3.11 · FastAPI 0.133 · Next.js 14
 
 ANDROMEDA es un agente conversacional de IA de propósito empresarial diseñado para conectarse directamente a instancias Odoo y responder consultas en lenguaje natural sobre datos de negocio en tiempo real. El sistema combina un pipeline NLP multi-capa, un motor de orquestación multi-agente, RAG con memoria vectorial persistente, ML/DL híbrido y una capa API REST con frontend React — todo ejecutado de forma local, sin dependencias de servicios externos.
 
@@ -283,11 +284,18 @@ Backend HTTP desacoplado: la dependencia es unidireccional `api → bot`, nunca 
 | `POST` | `/chat` | Consulta al agente (NL → respuesta enriquecida) | Bearer |
 | `GET` | `/reportes` | Catálogo de tipos de reporte disponibles | Bearer |
 | `POST` | `/reportes/generar` | Genera reporte del tipo especificado | Bearer |
-| `GET/POST/PUT/DELETE` | `/configuracion` | CRUD de empresas con cifrado Fernet | Bearer + admin |
-| `GET` | `/admin/metricas` | Dashboard de métricas SaaS agregadas | Bearer + admin |
+| `GET/POST/PUT/DELETE` | `/configuracion` | CRUD de empresas con cifrado Fernet (legacy) | Bearer + admin |
+| `GET` | `/admin/dashboard` | KPIs globales SaaS (empresas, usuarios, consultas) | Bearer + admin |
+| `GET` | `/admin/metricas` | Métricas de comportamiento agregadas | Bearer + admin |
+| `GET/POST/PUT/DELETE` | `/admin/empresas` | CRUD completo de empresas | Bearer + admin |
+| `GET/POST/PUT/DELETE` | `/admin/usuarios` | CRUD completo de usuarios | Bearer + admin |
+| `GET/PUT` | `/admin/configuracion-sistema` | Config LLM, Odoo, sesiones (JSON persistido) | Bearer + admin |
+| `GET/PUT` | `/agente/empresa` | Datos y configuración de la empresa propia | Bearer + agente |
+| `GET` | `/agente/metricas` | Métricas de la empresa propia | Bearer + agente |
 | `POST` | `/auth/login` | Autenticación — emite access + refresh token | — |
 | `POST` | `/auth/refresh` | Renovación de access token | — |
 | `GET` | `/auth/me` | Perfil del usuario autenticado | Bearer |
+| `PUT` | `/auth/perfil` | Actualizar nombre, email y contraseña propios | Bearer |
 | `POST` | `/auth/usuarios` | Alta de usuario (solo admin) | Bearer + admin |
 | `POST` | `/auth/logout` | Cierre de sesión stateless | Bearer |
 
@@ -306,7 +314,7 @@ SQLAlchemy 2.x con SQLite por defecto (configurable a PostgreSQL via `DB_URL`):
 | Modelo | Campos clave |
 |---|---|
 | `Empresa` | id UUID, nombre, odoo_url, odoo_db, `odoo_clave_cifrada` (Fernet), version_odoo, tipo_erp, activa |
-| `Usuario` | id, nombre, email, empresa_id FK, rol (admin/operador/viewer), activo, password_hash |
+| `Usuario` | id, nombre, email, empresa_id FK, rol (**admin/agente/usuario**), activo, password_hash |
 | `SesionLog` | empresa_id, session_id, timestamp, accion, tipo_consulta, resultado, duracion_ms |
 | `SesionContexto` | session_id PK, empresa_id, historial_json, ultima_actividad |
 
@@ -332,13 +340,16 @@ SPA completa con autenticación JWT, protección de rutas y consumo de la API RE
 |---|---|
 | Framework | Next.js 14.2, TypeScript 5.5, Tailwind CSS 3.4 |
 | Routing | App Router con grupos de rutas protegidas `(app)/` |
-| Auth client | `src/lib/auth.ts` — tokens en `localStorage`, `guardarTokens`, `clearTokens`, `estaLogueado` |
-| HTTP client | `src/lib/api.ts` — wrapper tipado, `ApiError`, retry automático en 401 con refresh token |
-| Páginas | `/login`, `/chat`, `/metricas`, `/configuracion` |
-| Componentes | `NavBar`, `ChatBubble`, `MetricsCard` |
-| Visualización | recharts `BarChart` para métricas |
-| Protección | `(app)/layout.tsx` redirige a `/login` si no hay access token |
-| Build | `next build` — 0 errores TypeScript, 5 rutas estáticas |
+| Auth client | `src/lib/auth.ts` — tokens + **rol** en `localStorage`; `guardarTokens`, `guardarRol`, `getRol`, `clearTokens` |
+| HTTP client | `src/lib/api.ts` — wrapper tipado, `ApiError`, retry automático en 401 con refresh token; **15 funciones nuevas** |
+| Vistas rol admin | `/admin` (dashboard KPIs), `/admin/chat`, `/admin/empresas` (CRUD), `/admin/usuarios` (CRUD), `/admin/metricas`, `/admin/configuracion` |
+| Vistas rol agente | `/agente/chat`, `/agente/metricas`, `/agente/configuracion` (Odoo propia) |
+| Vistas rol usuario | `/chat`, `/configuracion` (perfil personal) |
+| Componentes | `NavBar` (role-aware, links dinámicos + badge de rol), `ChatBubble`, `MetricsCard` |
+| Visualización | recharts `BarChart` + `LineChart` para métricas |
+| Protección | Guards por rol: `admin/layout.tsx`, `agente/layout.tsx`, `(app)/layout.tsx` |
+| Login | Redirige automáticamente según rol: admin → `/admin`, agente → `/agente/chat`, usuario → `/chat` |
+| Build | `next build` — 0 errores TypeScript |
 
 ```bash
 # Desarrollo
@@ -395,12 +406,13 @@ ANDROMEDA/
 │       ├── auth/
 │       │   └── jwt_utils.py         # crear_access_token, crear_refresh_token, decodificadores
 │       ├── routers/
-│       │   ├── auth.py              # /auth/* — login, refresh, me, usuarios, logout
+│       │   ├── auth.py              # /auth/* — login, refresh, me, perfil, usuarios, logout
 │       │   ├── chat.py              # POST /chat — stateless, contexto server-side
 │       │   ├── salud.py             # GET /health, GET /status
 │       │   ├── reportes.py          # GET /reportes, POST /reportes/generar
-│       │   ├── configuracion.py     # CRUD /configuracion — Fernet encrypt
-│       │   └── admin.py             # GET /admin/metricas — dashboard SaaS
+│       │   ├── configuracion.py     # CRUD /configuracion — Fernet encrypt (legacy)
+│       │   ├── admin.py             # /admin/* — dashboard, CRUD empresas/usuarios, config sistema
+│       │   └── agente.py            # /agente/* — empresa propia, métricas
 │       └── middlewares/
 │           └── logging.py           # METHOD /path → STATUS (ms)
 │
@@ -468,14 +480,25 @@ ANDROMEDA/
 │   ├── interfaz_v5.py               # InterfazAndromeda — Gradio Blocks (modo directo)
 │   └── gradio_cliente.py            # GradioCliente — Gradio como cliente HTTP de la API
 │
-├── frontend/                        # Next.js 14 — SPA con auth JWT
-│   ├── src/lib/auth.ts              # Gestión de tokens en localStorage
-│   ├── src/lib/api.ts               # Wrapper fetch tipado, retry 401, ApiError
+├── frontend/                        # Next.js 14 — SPA multi-rol con auth JWT
+│   ├── src/lib/auth.ts              # Tokens + rol en localStorage; guardarRol, getRol
+│   ├── src/lib/api.ts               # Wrapper fetch tipado, retry 401, 15 funciones SaaS nuevas
+│   ├── src/components/NavBar.tsx    # Sidebar role-aware (links + badge de rol dinámicos)
 │   └── src/app/
-│       ├── login/page.tsx           # Formulario de autenticación
-│       ├── (app)/chat/page.tsx      # Chat con historial y typing indicator
-│       ├── (app)/metricas/page.tsx  # KPIs + recharts BarChart
-│       └── (app)/configuracion/page.tsx  # Gestión de empresas
+│       ├── login/page.tsx           # Auth + redirect por rol
+│       ├── (app)/chat/page.tsx      # Chat usuario
+│       ├── (app)/configuracion/page.tsx  # Perfil personal usuario
+│       ├── (app)/admin/             # Sección Admin (layout guard)
+│       │   ├── page.tsx             # Dashboard KPIs globales
+│       │   ├── chat/page.tsx        # Chat admin
+│       │   ├── empresas/page.tsx    # CRUD empresas
+│       │   ├── usuarios/page.tsx    # CRUD usuarios
+│       │   ├── metricas/page.tsx    # Métricas sistema
+│       │   └── configuracion/page.tsx  # Config LLM/Odoo/sesiones
+│       └── (app)/agente/            # Sección Agente (layout guard)
+│           ├── chat/page.tsx        # Chat agente
+│           ├── metricas/page.tsx    # Métricas empresa propia
+│           └── configuracion/page.tsx  # Config Odoo empresa
 │
 ├── tests/                           # 695 tests — 18 archivos de test
 │   ├── test_auth.py                 # 50 tests — JWT, password, login, CORS (Fase 5)
@@ -612,6 +635,9 @@ Para producción, configurar `DB_URL=postgresql://...` en `.env` y servir el fro
 | `Ollama Connection Error` | Servicio Ollama inactivo | `ollama serve` → verificar `http://localhost:11434` |
 | `OdooRPC AuthenticationError` | Credenciales incorrectas en `.env` | Revisar `ODOO_URL`, `ODOO_DB`, `ODOO_USER`, `ODOO_API_KEY` |
 | `no such column: usuarios.password_hash` | BD creada antes de Fase 5 | `ALTER TABLE usuarios ADD COLUMN password_hash TEXT` |
+| `404 en /admin/dashboard` | Backend sin rutas nuevas | Reiniciar uvicorn con el código actualizado |
+| `403 Solo administradores` | Token con rol incorrecto | Hacer logout, login de nuevo para regenerar el token con el rol correcto |
+| `rol_usuario enum` en SQLite | BD creada con roles antiguos (operador/viewer) | Borrar `data/andromeda_saas.db` y reiniciar (SQLite no soporta ALTER ENUM) |
 | `ChromaDB Lock` | Múltiples instancias abiertas | Cerrar todos los procesos ANDROMEDA y reiniciar |
 | `CUDA Memory Error` | Modelo LLM supera VRAM disponible | Usar modelo más pequeño en Ollama o forzar CPU |
 | Frontend `connection refused` | Backend FastAPI no está corriendo | Arrancar uvicorn en puerto 8000 |

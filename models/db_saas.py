@@ -139,9 +139,9 @@ class Usuario(Base):
     email = Column(String(255), nullable=False, unique=True)
     empresa_id = Column(String(36), ForeignKey("empresas.id"), nullable=False)
     rol = Column(
-        SAEnum("admin", "operador", "viewer", name="rol_usuario"),
+        SAEnum("admin", "agente", "usuario", name="rol_usuario"),
         nullable=False,
-        default="operador",
+        default="agente",
     )
     activo = Column(Boolean, nullable=False, default=True)
     password_hash = Column(String(255), nullable=True)  # bcrypt hash; nullable para migraciones

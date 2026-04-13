@@ -203,7 +203,7 @@ class UsuarioActual(BaseModel):
     nombre: str
     email: str
     rol: str
-    empresa_id: str
+    empresa_id: Optional[str] = None
     activo: bool
 
 
@@ -213,14 +213,73 @@ class UsuarioCrearRequest(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=255)
     email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=8, max_length=512)
-    empresa_id: str = Field(..., description="ID de la empresa a la que pertenece.")
-    rol: str = Field(default="operador", description="admin | operador | viewer")
+    empresa_id: Optional[str] = Field(default=None, description="ID de la empresa a la que pertenece. Requerido salvo para admin global.")
+    rol: str = Field(default="agente", description="admin | agente | usuario")
 
     @field_validator("rol")
     @classmethod
     def validar_rol(cls, v: str) -> str:
-        roles_validos = {"admin", "operador", "viewer"}
+        roles_validos = {"admin", "agente", "usuario"}
         if v not in roles_validos:
             raise ValueError(f"rol debe ser uno de: {roles_validos}")
         return v
 
+
+# ── Dashboard Admin ──────────────────────────────────────────────────────────
+
+class DashboardAdmin(BaseModel):
+    """Respuesta de GET /admin/dashboard."""
+    empresas_total: int = 0
+    empresas_activas: int = 0
+    usuarios_total: int = 0
+    usuarios_activos: int = 0
+    consultas_hoy: int = 0
+    consultas_mes: int = 0
+    tasa_error: float = 0.0
+    uptime_pct: float = 100.0
+
+
+# ── CRUD Usuarios (admin) ────────────────────────────────────────────────────
+
+class UsuarioRespuesta(BaseModel):
+    """Respuesta de GET/POST/PUT /admin/usuarios."""
+    id: str
+    nombre: str
+    email: str
+    rol: str
+    empresa_id: Optional[str] = None
+    empresa_nombre: Optional[str] = None
+    activo: bool
+    creado_en: Optional[str] = None
+
+
+class UsuarioActualizar(BaseModel):
+    """Cuerpo de PUT /admin/usuarios/{id}."""
+    nombre: Optional[str] = Field(default=None, max_length=255)
+    email: Optional[str] = Field(default=None, max_length=255)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=512)
+    rol: Optional[str] = Field(default=None)
+    empresa_id: Optional[str] = Field(default=None)
+    activo: Optional[bool] = Field(default=None)
+
+
+class PerfilActualizar(BaseModel):
+    """Cuerpo de PUT /auth/perfil."""
+    nombre: Optional[str] = Field(default=None, max_length=255)
+    email: Optional[str] = Field(default=None, max_length=255)
+    password_actual: Optional[str] = Field(default=None, max_length=512)
+    password_nuevo: Optional[str] = Field(default=None, min_length=8, max_length=512)
+
+
+# ── Configuración Sistema ────────────────────────────────────────────────────
+
+class ConfigSistema(BaseModel):
+    """Configuración global del sistema (GET/PUT /admin/configuracion-sistema)."""
+    llm_provider: str = "ollama"
+    llm_model: str = "llama3"
+    max_tokens: int = 2048
+    temperatura: float = 0.3
+    odoo_timeout_seg: int = 30
+    max_reintentos: int = 3
+    session_ttl_min: int = 60
+    log_level: str = "INFO"

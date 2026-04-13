@@ -63,6 +63,7 @@ const IcoPerfil = (
 
 const LINKS_ADMIN: NavLink[] = [
   { href: "/admin",               label: "Dashboard",     icon: IcoDashboard },
+  { href: "/admin/chat",          label: "Chat",          icon: IcoChat      },
   { href: "/admin/empresas",      label: "Empresas",      icon: IcoEmpresas  },
   { href: "/admin/usuarios",      label: "Usuarios",      icon: IcoUsuarios  },
   { href: "/admin/metricas",      label: "Métricas",      icon: IcoMetricas  },

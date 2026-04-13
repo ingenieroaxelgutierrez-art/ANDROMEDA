@@ -1,3 +1,10 @@
+"""Script temporal que genera app/api/routers/admin.py con todas las rutas."""
+import os
+
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TARGET = os.path.join(BASE, "app", "api", "routers", "admin.py")
+
+CODE = """\
 # ============================================================
 # ANDROMEDA — app.api.routers.admin
 # Generado por scripts/_write_admin.py
@@ -386,3 +393,8 @@ def put_config_sistema(datos: ConfigSistema, payload: Annotated[dict, Depends(_s
     with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(datos.model_dump(), f, indent=2, ensure_ascii=False)
     return datos
+"""
+
+with open(TARGET, "w", encoding="utf-8") as f:
+    f.write(CODE)
+print(f"Written {len(CODE)} chars to {TARGET}")
