@@ -1357,15 +1357,15 @@ classDiagram
         +str email
         +str password_hash  (pbkdf2_sha256)
         +str rol  (admin|agente|usuario)
-        +str empresa_id  (FK → EmpresaSaaS, nullable)
+        +str empresa_id  FK-EmpresaSaaS nullable
         +bool activo
         +datetime creado_en
     }
 
     class SesionLog {
         +str id
-        +str usuario_id  (FK)
-        +str empresa_id  (FK)
+        +str usuario_id  FK
+        +str empresa_id  FK
         +str accion
         +datetime ts
     }
@@ -1431,41 +1431,36 @@ classDiagram
     %% ═══════════════════════════════════════════
 
     class AdminRouter {
-        <<FastAPI Router>>
-        +prefix: /admin
-        +tags: admin
+        <<FastAPI Router prefix-admin>>
         -_solo_admin(token) payload
-        +GET /dashboard → DashboardAdmin
-        +GET /empresas → List~EmpresaRespuesta~
-        +POST /empresas → EmpresaRespuesta
-        +PUT /empresas/{id} → EmpresaRespuesta
-        +DELETE /empresas/{id} → dict
-        +GET /usuarios → List~UsuarioRespuesta~
-        +POST /usuarios → UsuarioRespuesta
-        +PUT /usuarios/{id} → UsuarioRespuesta
-        +DELETE /usuarios/{id} → dict
-        +GET /metricas → dict
-        +GET /configuracion-sistema → ConfigSistema
-        +PUT /configuracion-sistema → ConfigSistema
+        +GET_dashboard() DashboardAdmin
+        +GET_empresas() List~EmpresaRespuesta~
+        +POST_empresas() EmpresaRespuesta
+        +PUT_empresa_id() EmpresaRespuesta
+        +DELETE_empresa_id() dict
+        +GET_usuarios() List~UsuarioRespuesta~
+        +POST_usuarios() UsuarioRespuesta
+        +PUT_usuario_id() UsuarioRespuesta
+        +DELETE_usuario_id() dict
+        +GET_metricas() dict
+        +GET_configuracion_sistema() ConfigSistema
+        +PUT_configuracion_sistema() ConfigSistema
     }
 
     class AgenteRouter {
-        <<FastAPI Router>>
-        +prefix: /agente
-        +tags: agente
+        <<FastAPI Router prefix-agente>>
         -_req_agente(token) payload
-        +GET /empresa → EmpresaRespuesta
-        +PUT /empresa → EmpresaRespuesta
-        +GET /metricas → dict
+        +GET_empresa() EmpresaRespuesta
+        +PUT_empresa() EmpresaRespuesta
+        +GET_metricas() dict
     }
 
     class AuthRouter {
-        <<FastAPI Router (v10.0 ext.)>>
-        +prefix: /auth
-        +POST /login → TokenPair
-        +POST /refresh → TokenPair
-        +GET /me → UsuarioActual
-        +PUT /perfil → UsuarioActual
+        <<FastAPI Router prefix-auth v10>>
+        +POST_login() TokenPair
+        +POST_refresh() TokenPair
+        +GET_me() UsuarioActual
+        +PUT_perfil() UsuarioActual
     }
 
     AdminRouter --> DashboardAdmin : returns
