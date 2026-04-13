@@ -507,10 +507,10 @@ class ProcesadorManuales:
             if seccion.pasos:
                 pasos_mostrados = 0
                 imagenes_mostradas = 0
-                max_imagenes = 8  # Limitar imágenes para no saturar
+                max_imagenes = 30  # Limitar imágenes para no saturar
                 
                 for paso in seccion.pasos:
-                    if pasos_mostrados >= 15:  # Máximo 15 pasos
+                    if pasos_mostrados >= 30:  # Máximo 30 pasos
                         md += "\n*... (ver manual completo para más pasos)*\n"
                         break
                     

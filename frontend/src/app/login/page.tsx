@@ -3,8 +3,8 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { login, ApiError } from "@/lib/api";
-import { guardarTokens } from "@/lib/auth";
+import { login, getMe, ApiError } from "@/lib/api";
+import { guardarTokens, guardarRol } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,7 +20,12 @@ export default function LoginPage() {
     try {
       const tokens = await login(email.trim(), password);
       guardarTokens(tokens.access_token, tokens.refresh_token);
-      router.push("/chat");
+      // Obtener rol y redirigir al dashboard correspondiente
+      const me = await getMe();
+      guardarRol(me.rol);
+      if (me.rol === "admin") router.push("/admin");
+      else if (me.rol === "agente") router.push("/agente/chat");
+      else router.push("/chat");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error de conexión. Intenta de nuevo.");
     } finally {

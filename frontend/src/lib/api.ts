@@ -56,6 +56,91 @@ export interface MetricasAdmin {
   por_tipo: Record<string, number>;
 }
 
+// ── Tipos SaaS Admin ─────────────────────────────────────────────────────────
+
+export interface EmpresaSaaS {
+  id: string;
+  nombre: string;
+  odoo_url: string;
+  odoo_db: string;
+  odoo_usuario: string;
+  version_odoo: number;
+  tipo_erp: string;
+  activa: boolean;
+  plan: "basico" | "profesional" | "enterprise";
+  max_usuarios: number;
+  usuarios_activos: number;
+  fecha_alta: string;
+}
+
+export type EmpresaCreate = Omit<EmpresaSaaS, "id" | "usuarios_activos" | "fecha_alta"> & {
+  odoo_password: string;
+};
+
+export interface UsuarioSaaS {
+  id: string;
+  nombre: string;
+  email: string;
+  rol: "admin" | "agente" | "usuario";
+  empresa_id: string | null;
+  empresa_nombre?: string;
+  activo: boolean;
+  fecha_alta: string;
+}
+
+export interface UsuarioCreate {
+  nombre: string;
+  email: string;
+  password: string;
+  rol: "admin" | "agente" | "usuario";
+  empresa_id?: string | null;
+}
+
+export interface DashboardAdmin {
+  empresas_total: number;
+  empresas_activas: number;
+  usuarios_total: number;
+  usuarios_activos: number;
+  consultas_hoy: number;
+  consultas_mes: number;
+  tasa_error: number;
+  uptime_pct: number;
+}
+
+export interface ConfigSistema {
+  llm_provider: string;
+  llm_model: string;
+  max_tokens: number;
+  temperatura: number;
+  odoo_timeout_seg: number;
+  max_reintentos: number;
+  session_ttl_min: number;
+  log_level: string;
+}
+
+// ── Tipos Agente ──────────────────────────────────────────────────────────────
+
+export interface ConfigEmpresaPropia {
+  id: string;
+  nombre: string;
+  odoo_url: string;
+  odoo_db: string;
+  odoo_usuario: string;
+  version_odoo: number;
+  tipo_erp: string;
+  activa: boolean;
+}
+
+export interface MetricasEmpresa {
+  total_consultas: number;
+  consultas_ok: number;
+  consultas_error: number;
+  tasa_error: number;
+  duracion_promedio_ms: number;
+  por_tipo: Record<string, number>;
+  tendencia_7dias: Array<{ dia: string; consultas: number }>;
+}
+
 // ── ApiError ─────────────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -197,6 +282,159 @@ export async function getMetricas(
 /** GET /configuracion */
 export async function getConfiguracion(): Promise<unknown[]> {
   const res = await _fetch("/configuracion");
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+// ── Admin — Dashboard ─────────────────────────────────────────────────────────
+
+/** GET /admin/dashboard */
+export async function getDashboard(): Promise<DashboardAdmin> {
+  const res = await _fetch("/admin/dashboard");
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+// ── Admin — Empresas ──────────────────────────────────────────────────────────
+
+/** GET /admin/empresas */
+export async function getEmpresas(): Promise<EmpresaSaaS[]> {
+  const res = await _fetch("/admin/empresas");
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+/** POST /admin/empresas */
+export async function crearEmpresa(data: EmpresaCreate): Promise<EmpresaSaaS> {
+  const res = await _fetch("/admin/empresas", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+/** PUT /admin/empresas/{id} */
+export async function actualizarEmpresa(
+  id: string,
+  data: Partial<EmpresaSaaS>
+): Promise<EmpresaSaaS> {
+  const res = await _fetch(`/admin/empresas/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+/** DELETE /admin/empresas/{id} */
+export async function eliminarEmpresa(id: string): Promise<void> {
+  const res = await _fetch(`/admin/empresas/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw await _parseError(res);
+}
+
+// ── Admin — Usuarios ──────────────────────────────────────────────────────────
+
+/** GET /admin/usuarios */
+export async function getUsuarios(): Promise<UsuarioSaaS[]> {
+  const res = await _fetch("/admin/usuarios");
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+/** POST /admin/usuarios */
+export async function crearUsuario(data: UsuarioCreate): Promise<UsuarioSaaS> {
+  const res = await _fetch("/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+/** PUT /admin/usuarios/{id} */
+export async function actualizarUsuario(
+  id: string,
+  data: Partial<UsuarioSaaS> & { password?: string }
+): Promise<UsuarioSaaS> {
+  const res = await _fetch(`/admin/usuarios/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+/** DELETE /admin/usuarios/{id} */
+export async function eliminarUsuario(id: string): Promise<void> {
+  const res = await _fetch(`/admin/usuarios/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw await _parseError(res);
+}
+
+/** GET /admin/configuracion-sistema */
+export async function getConfigSistema(): Promise<ConfigSistema> {
+  const res = await _fetch("/admin/configuracion-sistema");
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+/** PUT /admin/configuracion-sistema */
+export async function actualizarConfigSistema(
+  data: Partial<ConfigSistema>
+): Promise<ConfigSistema> {
+  const res = await _fetch("/admin/configuracion-sistema", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+// ── Agente — Empresa propia ───────────────────────────────────────────────────
+
+/** GET /agente/empresa */
+export async function getEmpresaPropia(): Promise<ConfigEmpresaPropia> {
+  const res = await _fetch("/agente/empresa");
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+/** PUT /agente/empresa */
+export async function actualizarEmpresaPropia(
+  data: Partial<ConfigEmpresaPropia> & { odoo_password?: string }
+): Promise<ConfigEmpresaPropia> {
+  const res = await _fetch("/agente/empresa", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+/** GET /agente/metricas */
+export async function getMetricasEmpresa(): Promise<MetricasEmpresa> {
+  const res = await _fetch("/agente/metricas");
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
+}
+
+// ── Usuario — Perfil ──────────────────────────────────────────────────────────
+
+/** PUT /auth/perfil */
+export async function actualizarPerfil(data: {
+  nombre?: string;
+  email?: string;
+  password_actual?: string;
+  password_nueva?: string;
+}): Promise<UsuarioActual> {
+  const res = await _fetch("/auth/perfil", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
   if (!res.ok) throw await _parseError(res);
   return res.json();
 }

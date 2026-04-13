@@ -1,7 +1,175 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getConfiguracion, ApiError } from "@/lib/api";
+import { useEffect, useState, FormEvent } from "react";
+import { getMe, actualizarPerfil, ApiError, UsuarioActual } from "@/lib/api";
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-xs font-semibold tracking-wider uppercase"
+             style={{ color: "rgba(255,255,255,0.5)" }}>{label}</label>
+      {children}
+      {hint && <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>{hint}</p>}
+    </div>
+  );
+}
+
+const ROL_LABELS: Record<string, string> = { admin: "Administrador", agente: "Profesional", usuario: "Usuario" };
+
+export default function ConfiguracionPage() {
+  const [me, setMe]           = useState<UsuarioActual | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  // Campos editables
+  const [nombre, setNombre]           = useState("");
+  const [email, setEmail]             = useState("");
+  const [passwordActual, setPasswordActual] = useState("");
+  const [passwordNueva, setPasswordNueva]   = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+
+  useEffect(() => {
+    getMe()
+      .then((u) => {
+        setMe(u);
+        setNombre(u.nombre);
+        setEmail(u.email);
+      })
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Error al cargar perfil."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (passwordNueva && passwordNueva !== passwordConfirm) {
+      setError("Las contraseñas nuevas no coinciden.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setSuccess(false);
+    try {
+      const payload: Parameters<typeof actualizarPerfil>[0] = {};
+      if (nombre !== me?.nombre)   payload.nombre = nombre;
+      if (email !== me?.email)     payload.email  = email;
+      if (passwordNueva) {
+        payload.password_actual = passwordActual;
+        payload.password_nueva  = passwordNueva;
+      }
+      const updated = await actualizarPerfil(payload);
+      setMe(updated);
+      setPasswordActual("");
+      setPasswordNueva("");
+      setPasswordConfirm("");
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Error al guardar.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6 max-w-lg">
+      <div>
+        <h2 className="text-2xl font-black text-white tracking-tight">Mi perfil</h2>
+        <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
+          Datos personales y seguridad de tu cuenta
+        </p>
+      </div>
+
+      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>Cargando…</p>}
+      {error && (
+        <div className="px-4 py-3 rounded-lg text-sm"
+             style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="px-4 py-3 rounded-lg text-sm"
+             style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "#34d399" }}>
+          Perfil actualizado correctamente.
+        </div>
+      )}
+
+      {me && (
+        <>
+          {/* Avatar / resumen */}
+          <div className="rounded-xl p-5 flex items-center gap-4"
+               style={{ background: "rgba(102,126,234,0.1)", border: "1px solid rgba(102,126,234,0.2)" }}>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 text-lg font-black text-white"
+                 style={{ background: "linear-gradient(135deg,#667eea,#764ba2)" }}>
+              {me.nombre.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <p className="font-bold text-white">{me.nombre}</p>
+              <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>{me.email}</p>
+            </div>
+            <span className="ml-auto text-xs px-2.5 py-1 rounded-full font-medium"
+                  style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.12)" }}>
+              {ROL_LABELS[me.rol] ?? me.rol}
+            </span>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <section className="rounded-xl p-6 space-y-4"
+                     style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <h3 className="text-sm font-bold text-white">Información personal</h3>
+
+              <Field label="Nombre completo">
+                <input className="input-dark w-full text-sm" value={nombre}
+                       onChange={(e) => setNombre(e.target.value)} required placeholder="Tu nombre" />
+              </Field>
+
+              <Field label="Correo electrónico">
+                <input className="input-dark w-full text-sm" type="email" value={email}
+                       onChange={(e) => setEmail(e.target.value)} required placeholder="tu@email.com" />
+              </Field>
+            </section>
+
+            <section className="rounded-xl p-6 space-y-4"
+                     style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <h3 className="text-sm font-bold text-white">Cambiar contraseña</h3>
+              <p className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+                Déjalo en blanco si no deseas cambiar tu contraseña.
+              </p>
+
+              <Field label="Contraseña actual">
+                <input className="input-dark w-full text-sm" type="password" value={passwordActual}
+                       onChange={(e) => setPasswordActual(e.target.value)} placeholder="••••••••" />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Nueva contraseña">
+                  <input className="input-dark w-full text-sm" type="password" value={passwordNueva}
+                         onChange={(e) => setPasswordNueva(e.target.value)} placeholder="••••••••" />
+                </Field>
+                <Field label="Confirmar contraseña">
+                  <input className="input-dark w-full text-sm" type="password" value={passwordConfirm}
+                         onChange={(e) => setPasswordConfirm(e.target.value)} placeholder="••••••••" />
+                </Field>
+              </div>
+            </section>
+
+            <button type="submit" disabled={saving}
+                    className="px-6 py-2.5 rounded-xl text-sm font-bold transition-opacity"
+                    style={{
+                      background: "linear-gradient(135deg,#667eea,#764ba2)",
+                      color: "#fff",
+                      opacity: saving ? 0.6 : 1,
+                    }}>
+              {saving ? "Guardando…" : "Guardar cambios"}
+            </button>
+          </form>
+        </>
+      )}
+    </div>
+  );
+}
+
 
 interface Empresa {
   id: string;
@@ -14,133 +182,3 @@ interface Empresa {
   activa: boolean;
 }
 
-export default function ConfiguracionPage() {
-  const [empresas, setEmpresas] = useState<Empresa[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getConfiguracion()
-      .then((data) => setEmpresas(data as Empresa[]))
-      .catch((err) => {
-        if (err instanceof ApiError) {
-          setError(err.message);
-        } else {
-          setError("Error al cargar la configuración.");
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">
-          Configuración de empresas
-        </h2>
-        <span
-          className="text-xs px-3 py-1 rounded-full"
-          style={{
-            background: "rgba(255,255,255,0.06)",
-            color: "rgba(255,255,255,0.4)",
-            border: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          {empresas.length} empresa{empresas.length === 1 ? "" : "s"} registrada
-          {empresas.length === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      {loading && (
-        <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>
-          Cargando…
-        </p>
-      )}
-
-      {error && (
-        <div
-          className="px-4 py-3 rounded-lg text-sm"
-          style={{
-            background: "rgba(239,68,68,0.12)",
-            border: "1px solid rgba(239,68,68,0.3)",
-            color: "#f87171",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {!loading && !error && empresas.length === 0 && (
-        <div
-          className="text-center py-16 text-sm"
-          style={{ color: "rgba(255,255,255,0.35)" }}
-        >
-          No hay empresas configuradas todavía.
-          <br />
-          Utiliza la API{" "}
-          <code
-            className="px-1.5 py-0.5 rounded text-xs"
-            style={{
-              background: "rgba(102,126,234,0.18)",
-              color: "#a5b4fc",
-              border: "1px solid rgba(102,126,234,0.25)",
-            }}
-          >
-            /configuracion
-          </code>{" "}
-          para agregar una.
-        </div>
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {empresas.map((e) => (
-          <div
-            key={e.id}
-            className="rounded-xl p-5 space-y-2"
-            style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              backdropFilter: "blur(12px)",
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-white">{e.nombre}</h3>
-              <span
-                className="text-xs px-2 py-0.5 rounded-full font-medium"
-                style={
-                  e.activa
-                    ? {
-                        background: "rgba(52,211,153,0.15)",
-                        color: "#34d399",
-                        border: "1px solid rgba(52,211,153,0.3)",
-                      }
-                    : {
-                        background: "rgba(255,255,255,0.06)",
-                        color: "rgba(255,255,255,0.35)",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                      }
-                }
-              >
-                {e.activa ? "Activa" : "Inactiva"}
-              </span>
-            </div>
-            <p
-              className="text-xs truncate"
-              style={{ color: "rgba(255,255,255,0.4)" }}
-            >
-              {e.odoo_url}
-            </p>
-            <div
-              className="flex gap-4 text-xs"
-              style={{ color: "rgba(255,255,255,0.3)" }}
-            >
-              <span>BD: {e.odoo_db}</span>
-              <span>Odoo v{e.version_odoo}</span>
-              <span>{e.tipo_erp.toUpperCase()}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
