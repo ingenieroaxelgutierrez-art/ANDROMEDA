@@ -81,12 +81,71 @@ class AgenteEspecializadoBase:
         return respuesta
 
     def pre_ejecucion(self, consulta: Any, mensaje: str) -> ResultadoPreEjecucion:
+        advertencias = self._advertencias_de_parametros(consulta)
         return ResultadoPreEjecucion(
             permitido=True,
             consulta=consulta,
-            advertencias=[],
+            advertencias=advertencias,
             confianza_agente=0.7
         )
+
+    def _advertencias_de_parametros(self, consulta: Any) -> List[str]:
+        """
+        Convierte los parámetros extraídos por el NLP en advertencias internas
+        que sirven de contexto a los agentes LLM y ejecutores.
+
+        Estas advertencias NO se muestran al usuario directamente; viajan por
+        el pipeline para enriquecer el prompt del LLM y los filtros de Odoo.
+        """
+        advertencias: List[str] = []
+        params = getattr(consulta, 'parametros', {}) or {}
+
+        # Agrupación solicitada
+        groupby = params.get('groupby')
+        if groupby:
+            if isinstance(groupby, list):
+                for g in groupby:
+                    advertencias.append(f'usuario_pide_agrupar_por_{g}')
+            else:
+                advertencias.append(f'usuario_pide_agrupar_por_{groupby}')
+
+        # Filtro de tienda
+        if params.get('tienda'):
+            advertencias.append(f"usuario_filtro_tienda:{params['tienda']}")
+
+        # Filtro de cliente
+        if params.get('cliente'):
+            advertencias.append(f"usuario_filtro_cliente:{params['cliente']}")
+
+        # Filtro de vendedor
+        if params.get('vendedor'):
+            advertencias.append(f"usuario_filtro_vendedor:{params['vendedor']}")
+
+        # Filtro de producto
+        if params.get('producto'):
+            advertencias.append(f"usuario_filtro_producto:{params['producto']}")
+
+        # Filtro de proveedor
+        if params.get('proveedor'):
+            advertencias.append(f"usuario_filtro_proveedor:{params['proveedor']}")
+
+        # Ranking / límite explícito
+        limite = params.get('limite')
+        if isinstance(limite, int):
+            advertencias.append(f'usuario_pide_top_{limite}')
+
+        # Formato de salida
+        formato = params.get('formato') or getattr(consulta, 'formato_solicitado', None)
+        if formato and formato != 'auto':
+            advertencias.append(f'usuario_pide_formato_{formato}')
+
+        # Rangos de monto
+        if params.get('mayor_que') is not None:
+            advertencias.append(f"usuario_filtro_monto_min:{params['mayor_que']}")
+        if params.get('menor_que') is not None:
+            advertencias.append(f"usuario_filtro_monto_max:{params['menor_que']}")
+
+        return advertencias
 
     def post_ejecucion(self, consulta: Any, respuesta: str, df: Any, error: bool = False) -> ResultadoPostEjecucion:
         confianza = float(getattr(consulta, 'confianza', 0.0) or 0.0)
@@ -186,6 +245,9 @@ class AgentVentas(AgenteEspecializadoBase):
                                               'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
                                               'septiembre', 'octubre', 'noviembre', 'diciembre', '2024', '2025', '2026']):
                 advertencias.append('comparativa_sin_periodos_explicitos_usar_mes_anterior')
+
+        # Incluir contexto de parámetros del usuario (groupby, tienda, formato, etc.)
+        advertencias.extend(self._advertencias_de_parametros(consulta))
 
         return ResultadoPreEjecucion(
             permitido=True,
@@ -304,6 +366,9 @@ class AgentInventarios(AgenteEspecializadoBase):
         if accion == 'merma_inventario' and 'ajuste' not in texto and 'merma' not in texto:
             advertencias.append('merma_verificar_tipo_movimiento_scrap_adjustment')
 
+        # Incluir contexto de parámetros del usuario
+        advertencias.extend(self._advertencias_de_parametros(consulta))
+
         return ResultadoPreEjecucion(
             permitido=True,
             consulta=consulta,
@@ -415,6 +480,9 @@ class AgentFinanzas(AgenteEspecializadoBase):
         # Anti-alucinación: ratios financieros necesitan datos de ambos lados del balance
         if accion in ('razon_liquidez', 'capital_trabajo'):
             advertencias.append('ratio_requiere_balance_completo_verificar_datos')
+
+        # Incluir contexto de parámetros del usuario
+        advertencias.extend(self._advertencias_de_parametros(consulta))
 
         return ResultadoPreEjecucion(
             permitido=True,
@@ -535,6 +603,9 @@ class AgentDiagnostico(AgenteEspecializadoBase):
         # Anti-alucinación: reconciliación stock-contable es compleja
         if accion == 'reconciliacion_stock_contable':
             advertencias.append('reconciliacion_puede_tener_diferencias_por_timing')
+
+        # Incluir contexto de parámetros del usuario
+        advertencias.extend(self._advertencias_de_parametros(consulta))
 
         return ResultadoPreEjecucion(
             permitido=True,
@@ -741,6 +812,9 @@ class AgentCRM(AgenteEspecializadoBase):
         if accion == 'win_rate' and not any(x in texto for x in ['ganada', 'perdida', 'cerrada', 'won', 'lost']):
             advertencias.append('win_rate_calcula_solo_oportunidades_cerradas')
 
+        # Incluir contexto de parámetros del usuario
+        advertencias.extend(self._advertencias_de_parametros(consulta))
+
         return ResultadoPreEjecucion(
             permitido=True,
             consulta=consulta,
@@ -856,6 +930,9 @@ class AgentCompras(AgenteEspecializadoBase):
         if accion == 'ahorro_potencial':
             advertencias.append('ahorro_es_estimacion_no_garantia')
 
+        # Incluir contexto de parámetros del usuario
+        advertencias.extend(self._advertencias_de_parametros(consulta))
+
         return ResultadoPreEjecucion(
             permitido=True,
             consulta=consulta,
@@ -966,6 +1043,9 @@ class AgentPDV(AgenteEspecializadoBase):
         if accion == 'ventas_pos_vs_ecommerce':
             advertencias.append('comparativa_requiere_canal_ecommerce_configurado')
 
+        # Incluir contexto de parámetros del usuario
+        advertencias.extend(self._advertencias_de_parametros(consulta))
+
         return ResultadoPreEjecucion(
             permitido=True,
             consulta=consulta,
@@ -1070,6 +1150,9 @@ class AgentPredicciones(AgenteEspecializadoBase):
         horizonte = params.get('horizonte_dias', 0)
         if isinstance(horizonte, int) and horizonte > 90:
             advertencias.append('horizonte_prediccion_largo_menor_confianza')
+
+        # Incluir contexto de parámetros del usuario
+        advertencias.extend(self._advertencias_de_parametros(consulta))
 
         return ResultadoPreEjecucion(
             permitido=True,
@@ -1387,6 +1470,9 @@ class AgentRRHH(AgenteEspecializadoBase):
                 params['limite'] = 50
                 consulta.parametros = params
                 advertencias.append('nomina_limitada_50_por_confidencialidad')
+
+        # Incluir contexto de parámetros del usuario
+        advertencias.extend(self._advertencias_de_parametros(consulta))
 
         return ResultadoPreEjecucion(
             permitido=True,

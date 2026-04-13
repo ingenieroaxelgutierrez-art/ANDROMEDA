@@ -866,6 +866,114 @@ class MapeadorConsultas:
             },
         }
 
-        return mapeo.get(accion, {})
+        resultado = dict(mapeo.get(accion, {}))
+        if resultado:
+            resultado = self._aplicar_filtros_dinamicos(resultado, params)
+        return resultado
+
+    # ─────────────────────────────────────────────────────────────────────────
+    def _aplicar_filtros_dinamicos(self, consulta: dict, params: dict) -> dict:
+        """
+        Aplica los filtros extraídos por el NLP al dominio de la consulta Odoo.
+
+        Reglas:
+        - 'tienda'    → filtra por nombre de config/session (POS) o location
+        - 'cliente'   → filtra partner_id por nombre (ilike)
+        - 'vendedor'  → filtra user_id por nombre (ilike)
+        - 'producto'  → filtra product_id por nombre (ilike)
+        - 'proveedor' → filtra partner_id por nombre proveedor (ilike)
+        - 'limite'    → sobreescribe el límite de registros
+        - 'mayor_que' → añade filtro de monto mínimo
+        - 'menor_que' → añade filtro de monto máximo
+        """
+        if not params:
+            return consulta
+
+        modelo = consulta.get('modelo', '')
+        filtro_extra = []
+
+        # ── Tienda / Sucursal ─────────────────────────────────────────────────
+        tienda = params.get('tienda')
+        if tienda:
+            if modelo in ('pos.order', 'pos.session'):
+                filtro_extra.append(('config_id.name', 'ilike', tienda))
+            elif modelo in ('stock.quant', 'stock.move', 'stock.picking'):
+                filtro_extra.append(('location_id.name', 'ilike', tienda))
+
+        # ── Cliente ───────────────────────────────────────────────────────────
+        cliente = params.get('cliente')
+        if cliente and modelo in (
+            'sale.order', 'sale.order.line', 'account.move',
+            'crm.lead', 'pos.order',
+        ):
+            filtro_extra.append(('partner_id.name', 'ilike', cliente))
+
+        # ── Vendedor ──────────────────────────────────────────────────────────
+        vendedor = params.get('vendedor')
+        if vendedor and modelo in ('sale.order', 'sale.order.line', 'crm.lead'):
+            filtro_extra.append(('user_id.name', 'ilike', vendedor))
+
+        # ── Producto ──────────────────────────────────────────────────────────
+        producto = params.get('producto')
+        if producto:
+            campo_producto = 'product_id.name'
+            if modelo == 'product.product':
+                campo_producto = 'name'
+            elif modelo == 'product.template':
+                campo_producto = 'name'
+            filtro_extra.append((campo_producto, 'ilike', producto))
+
+        # ── Proveedor ─────────────────────────────────────────────────────────
+        proveedor = params.get('proveedor')
+        if proveedor and modelo in ('purchase.order', 'purchase.order.line', 'stock.picking'):
+            filtro_extra.append(('partner_id.name', 'ilike', proveedor))
+
+        # ── Mayor / Menor que (montos) ─────────────────────────────────────────
+        mayor_que = params.get('mayor_que')
+        if mayor_que is not None:
+            campo_monto = _campo_monto_para_modelo(modelo)
+            if campo_monto:
+                filtro_extra.append((campo_monto, '>=', mayor_que))
+
+        menor_que = params.get('menor_que')
+        if menor_que is not None:
+            campo_monto = _campo_monto_para_modelo(modelo)
+            if campo_monto:
+                filtro_extra.append((campo_monto, '<=', menor_que))
+
+        # ── Aplicar filtros extras al dominio ──────────────────────────────────
+        if filtro_extra:
+            consulta = dict(consulta)
+            consulta['filtro'] = list(consulta.get('filtro', [])) + filtro_extra
+
+        # ── Límite solicitado por el usuario ───────────────────────────────────
+        limite_usuario = params.get('limite')
+        if isinstance(limite_usuario, int) and 1 <= limite_usuario <= 1000:
+            consulta = dict(consulta)
+            consulta['limite'] = limite_usuario
+
+        # ── Dirección de orden ─────────────────────────────────────────────────
+        orden_dir = params.get('orden_dir')
+        if orden_dir and 'orden' in consulta:
+            campo_orden = consulta['orden'].split()[0] if consulta.get('orden') else ''
+            if campo_orden:
+                consulta = dict(consulta)
+                consulta['orden'] = f"{campo_orden} {orden_dir}"
+
+        return consulta
+
+
+def _campo_monto_para_modelo(modelo: str) -> str:
+    """Retorna el campo de monto principal para un modelo Odoo."""
+    _mapa = {
+        'sale.order': 'amount_total',
+        'purchase.order': 'amount_total',
+        'account.move': 'amount_total',
+        'pos.order': 'amount_total',
+        'crm.lead': 'expected_revenue',
+        'hr.contract': 'wage',
+    }
+    return _mapa.get(modelo, '')
+
 
 

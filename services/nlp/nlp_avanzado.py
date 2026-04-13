@@ -73,6 +73,7 @@ class ConsultaEntendida:
     accion_sugerida: str
     respuesta_tipo: str  # analisis, consulta, prediccion, ayuda
     subintenciones: List[str]
+    formato_solicitado: str = "auto"  # tabla, grafica, lista, resumen, auto
 
 
 class MotorNLPAvanzado:
@@ -1242,7 +1243,8 @@ class MotorNLPAvanzado:
             contexto=mensaje,
             accion_sugerida=accion,
             respuesta_tipo=tipo_respuesta,
-            subintenciones=subintenciones
+            subintenciones=subintenciones,
+            formato_solicitado=parametros.get('formato', 'auto'),
         )
     
     def _detectar_intencion(self, mensaje: str) -> Tuple[str, float]:
@@ -1727,30 +1729,146 @@ class MotorNLPAvanzado:
         }
     
     def _extraer_parametros(self, mensaje: str) -> Dict[str, Any]:
-        """Extrae parámetros numéricos del mensaje."""
+        """Extrae parámetros del mensaje: límites, filtros, agrupaciones y formato."""
         parametros = {}
-        
-        # Top N
+
+        # ── Top N ──────────────────────────────────────────────────────────────
         match = self.patron_top.search(mensaje)
         if match:
             parametros['limite'] = int(match.group(1)) if match.group(1) else 10
             parametros['ordenar'] = 'desc'
-        
-        # Mayor que / Menor que
+
+        # ── Últimos N días/semanas/meses ───────────────────────────────────────
+        match_ult = self.patron_ultimos.search(mensaje)
+        if match_ult:
+            n = int(match_ult.group(1))
+            unidad = match_ult.group(2).lower()
+            if 'semana' in unidad:
+                parametros['dias_historico'] = n * 7
+            elif 'mes' in unidad:
+                parametros['dias_historico'] = n * 30
+            else:
+                parametros['dias_historico'] = n
+
+        # ── Mayor / Menor que ──────────────────────────────────────────────────
         match = self.patron_mayor.search(mensaje)
         if match:
             parametros['mayor_que'] = float(match.group(1).replace(',', ''))
-        
+
         match = self.patron_menor.search(mensaje)
         if match:
             parametros['menor_que'] = float(match.group(1).replace(',', ''))
-        
-        # Comparativa
+
+        # ── Comparativa ────────────────────────────────────────────────────────
         match = self.patron_vs.search(mensaje)
         if match:
             parametros['comparar_a'] = match.group(1)
             parametros['comparar_b'] = match.group(2)
-        
+
+        # ── Agrupación (groupby) ────────────────────────────────────────────────
+        _GROUPBY_MAP = {
+            r'\bpor\s+tienda\b': 'tienda',
+            r'\bpor\s+sucursal\b': 'sucursal',
+            r'\bpor\s+vendedor\b': 'vendedor',
+            r'\bpor\s+vendedora\b': 'vendedor',
+            r'\bpor\s+ejecutivo\b': 'vendedor',
+            r'\bpor\s+(categoría|categoria)\b': 'categoria',
+            r'\bpor\s+marca\b': 'marca',
+            r'\bpor\s+producto\b': 'producto',
+            r'\bpor\s+(artículo|articulo)\b': 'producto',
+            r'\bpor\s+cliente\b': 'cliente',
+            r'\bpor\s+proveedor\b': 'proveedor',
+            r'\bpor\s+canal\b': 'canal',
+            r'\bpor\s+(departamento|área|area)\b': 'departamento',
+            r'\bpor\s+(empleado|colaborador)\b': 'empleado',
+            r'\bpor\s+(cajero|caja)\b': 'cajero',
+            r'\bpor\s+(día|dia)\b': 'dia',
+            r'\bpor\s+semana\b': 'semana',
+            r'\bpor\s+mes\b': 'mes',
+            r'\bpor\s+(año|anio)\b': 'año',
+            r'\bdesglosad[ao]\s+por\s+(\w+)': None,  # genérico — captura grupo 1
+            r'\bagrupado\s+por\s+(\w+)': None,
+        }
+        groupby_vals = []
+        for patron, valor in _GROUPBY_MAP.items():
+            m = re.search(patron, mensaje, re.IGNORECASE)
+            if m:
+                if valor is None:
+                    groupby_vals.append(m.group(1).lower())
+                else:
+                    groupby_vals.append(valor)
+        if groupby_vals:
+            parametros['groupby'] = groupby_vals[0] if len(groupby_vals) == 1 else groupby_vals
+
+        # ── Tienda / Sucursal específica ────────────────────────────────────────
+        _TIENDAS = [
+            'aeropuerto', 'cuautla', 'irapuato', 'moralia', 'morelia', 'puebla',
+            'slp', 'san luis', 'lomas', 'antenas', 'toreo', 'cdmx', 'monterrey',
+            'guadalajara', 'veracruz', 'cancun', 'mérida', 'merida', 'queretaro',
+            'querétaro', 'toluca', 'tijuana', 'juarez', 'leon', 'aguascalientes',
+        ]
+        for tda in _TIENDAS:
+            if re.search(r'\b' + re.escape(tda) + r'\b', mensaje, re.IGNORECASE):
+                parametros['tienda'] = tda
+                break
+        # Patrón genérico "de la tienda X" / "sucursal X"
+        if 'tienda' not in parametros:
+            m = re.search(r'(?:tienda|sucursal)\s+(?:de\s+)?([A-Za-záéíóúñÁÉÍÓÚÑ\s]{2,25}?)(?:\s|$|,)', mensaje, re.IGNORECASE)
+            if m:
+                parametros['tienda'] = m.group(1).strip().lower()
+
+        # ── Vendedor específico ───────────────────────────────────────────────
+        m = re.search(r'(?:vendedor|ejecutivo|vendedora)\s+(?:llamad[oa]\s+)?([A-Za-záéíóúñÁÉÍÓÚÑ\s]{2,30}?)(?:\s|$|,)', mensaje, re.IGNORECASE)
+        if m:
+            parametros['vendedor'] = m.group(1).strip()
+
+        # ── Producto / Artículo específico ────────────────────────────────────
+        m = re.search(r'(?:del?\s+)?(?:producto|artículo|articulo)\s+(?:llamad[oa]\s+)?["\']?([A-Za-záéíóúñÁÉÍÓÚÑ0-9\s\-]{2,40}?)["\']?(?:\s|$|,)', mensaje, re.IGNORECASE)
+        if m:
+            parametros['producto'] = m.group(1).strip()
+
+        # ── Cliente específico ────────────────────────────────────────────────
+        m = re.search(r'(?:del?\s+)?(?:cliente|customer)\s+(?:llamad[oa]\s+)?["\']?([A-Za-záéíóúñÁÉÍÓÚÑ\s\-]{2,40}?)["\']?(?:\s|$|,)', mensaje, re.IGNORECASE)
+        if m:
+            parametros['cliente'] = m.group(1).strip()
+
+        # ── Proveedor específico ──────────────────────────────────────────────
+        m = re.search(r'(?:del?\s+)?(?:proveedor|supplier)\s+(?:llamad[oa]\s+)?["\']?([A-Za-záéíóúñÁÉÍÓÚÑ\s\-]{2,40}?)["\']?(?:\s|$|,)', mensaje, re.IGNORECASE)
+        if m:
+            parametros['proveedor'] = m.group(1).strip()
+
+        # ── Formato de salida ─────────────────────────────────────────────────
+        _FORMATOS = {
+            r'\ben\s+tabla\b': 'tabla',
+            r'\ben\s+tabular\b': 'tabla',
+            r'\btabla\b': 'tabla',
+            r'\ben\s+(una\s+)?gr[aá]fica\b': 'grafica',
+            r'\buna\s+gr[aá]fica\b': 'grafica',
+            r'\bgr[aá]fica\b': 'grafica',
+            r'\bgr[aá]fico\b': 'grafica',
+            r'\bchart\b': 'grafica',
+            r'\bvisual(?:iza(?:ción|cion))?\b': 'grafica',
+            r'\ben\s+lista\b': 'lista',
+            r'\ben\s+formato\s+lista\b': 'lista',
+            r'\blistado\b': 'lista',
+            r'\bresumen\b': 'resumen',
+            r'\bsumario\b': 'resumen',
+            r'\bbreve\b': 'resumen',
+            r'\bexcel\b': 'excel',
+            r'\bpdf\b': 'pdf',
+            r'\bexportar\b': 'excel',
+        }
+        for patron, fmt in _FORMATOS.items():
+            if re.search(patron, mensaje, re.IGNORECASE):
+                parametros['formato'] = fmt
+                break
+
+        # ── Dirección de orden ────────────────────────────────────────────────
+        if re.search(r'\bmayor\s+a\s+menor\b|\bdescendente\b|\bdecreciente\b', mensaje, re.IGNORECASE):
+            parametros['orden_dir'] = 'desc'
+        elif re.search(r'\bmenor\s+a\s+mayor\b|\bascendente\b|\bcreciente\b', mensaje, re.IGNORECASE):
+            parametros['orden_dir'] = 'asc'
+
         return parametros
     
     def _extraer_modificadores(self, mensaje: str) -> List[str]:

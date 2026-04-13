@@ -1881,18 +1881,26 @@ class EjecutorAcciones:
                             except Exception:
                                 pass
 
+                        # Construir sección de especificaciones del usuario
+                        especificaciones = _construir_especificaciones_usuario(params, consulta)
+
                         prompt_llm = (
-                            f"Eres un analista BI. Analiza estos datos de '{accion_legible}' "
+                            f"Eres un analista BI experto. Analiza estos datos de '{accion_legible}' "
                             f"del período {fecha_ini} a {fecha_fin}.\n\n"
                             f"Datos ({n_registros} registros, muestra de 15):\n{contexto_datos}\n\n"
                         )
                         if contexto_memoria:
                             prompt_llm += f"Contexto de análisis previos:\n{contexto_memoria}\n\n"
+                        if especificaciones:
+                            prompt_llm += f"Especificaciones del usuario:\n{especificaciones}\n\n"
                         prompt_llm += (
-                            f"Pregunta del usuario: {mensaje}\n\n"
-                            f"Instrucciones:\n"
-                            f"- Responde en máximo 4 bullet points concisos\n"
-                            f"- Usa SOLO hechos observables de los datos\n"
+                            f"Pregunta exacta del usuario: {mensaje}\n\n"
+                            f"Instrucciones ESTRICTAS:\n"
+                            f"- Responde EXACTAMENTE lo que el usuario pidió, no más ni menos\n"
+                            f"- Si el usuario pidió un formato específico (tabla/lista/gráfica), úsalo\n"
+                            f"- Si el usuario filtró por tienda/vendedor/producto, reporta SOLO esos datos\n"
+                            f"- Si el usuario pidió top N, muestra exactamente N elementos\n"
+                            f"- Usa SOLO hechos observables de los datos proporcionados\n"
                             f"- Si detectas algo notable (tendencia, anomalía, concentración), menciónalo\n"
                             f"- No inventes cifras que no estén en los datos\n"
                             f"- Si hay contexto de análisis previos, compara brevemente"
@@ -1985,4 +1993,73 @@ class EjecutorAcciones:
             f"{ejemplos_md}"
         )
 
+
+# ============================================================
+# FUNCIONES AUXILIARES DEL MÓDULO
+# ============================================================
+
+def _construir_especificaciones_usuario(params: dict, consulta) -> str:
+    """
+    Construye un bloque de texto con las especificaciones que el usuario
+    indicó explícitamente, para incluirlo en el prompt del LLM.
+
+    Esto garantiza que el LLM sepa exactamente qué filtros/formato/agrupación
+    el usuario solicitó y los refleje en su respuesta.
+    """
+    if not params:
+        return ""
+
+    lineas = []
+
+    # Filtros de dominio
+    if params.get('tienda'):
+        lineas.append(f"- Filtrar SOLO la tienda/sucursal: {params['tienda']}")
+    if params.get('cliente'):
+        lineas.append(f"- Filtrar SOLO el cliente: {params['cliente']}")
+    if params.get('vendedor'):
+        lineas.append(f"- Filtrar SOLO el vendedor/ejecutivo: {params['vendedor']}")
+    if params.get('producto'):
+        lineas.append(f"- Filtrar SOLO el producto: {params['producto']}")
+    if params.get('proveedor'):
+        lineas.append(f"- Filtrar SOLO el proveedor: {params['proveedor']}")
+
+    # Agrupación
+    groupby = params.get('groupby')
+    if groupby:
+        if isinstance(groupby, list):
+            lineas.append(f"- Agrupar resultados por: {', '.join(groupby)}")
+        else:
+            lineas.append(f"- Agrupar resultados por: {groupby}")
+
+    # Límite / ranking
+    limite = params.get('limite')
+    if isinstance(limite, int):
+        lineas.append(f"- Mostrar exactamente los top {limite} resultados")
+
+    # Rangos numéricos
+    if params.get('mayor_que') is not None:
+        lineas.append(f"- Solo registros con monto mayor a: ${params['mayor_que']:,.2f}")
+    if params.get('menor_que') is not None:
+        lineas.append(f"- Solo registros con monto menor a: ${params['menor_que']:,.2f}")
+
+    # Formato de salida
+    fmt = params.get('formato') or getattr(consulta, 'formato_solicitado', 'auto')
+    if fmt and fmt != 'auto':
+        _fmt_labels = {
+            'tabla': 'tabla Markdown',
+            'grafica': 'gráfica (Plotly)',
+            'lista': 'lista de puntos',
+            'resumen': 'resumen ejecutivo',
+            'excel': 'tabla exportable a Excel',
+            'pdf': 'reporte en PDF',
+        }
+        lineas.append(f"- Formato de salida preferido: {_fmt_labels.get(fmt, fmt)}")
+
+    # Dirección de orden
+    if params.get('orden_dir') == 'asc':
+        lineas.append("- Ordenar de menor a mayor")
+    elif params.get('orden_dir') == 'desc':
+        lineas.append("- Ordenar de mayor a menor")
+
+    return "\n".join(lineas)
 
