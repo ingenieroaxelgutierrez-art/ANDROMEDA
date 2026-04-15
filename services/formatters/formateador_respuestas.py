@@ -468,10 +468,38 @@ _Ver tabla de datos. ¿Quieres análisis, predicción o reporte?_"""
         return md
 
     def _formatear_cxc_especializado(self, datos: Dict) -> str:
-        """Formatear cuentas por cobrar con análisis especializado."""
+        """Formatear cuentas por cobrar con análisis especializado.
+        Acepta datos de analizador_avanzado.cuentas_por_cobrar() o consultas_especializadas.cuentas_por_cobrar().
+        """
         metricas = datos.get('metricas', {})
-        confianza = datos.get('confianza', 0)
-        
+        confianza = datos.get('confianza', datos.get('confianza_datos', 0))
+
+        # Valores principales — soporte para claves directas (analizador) y nested (metricas)
+        total_cxc = metricas.get('total_cxc', datos.get('total', datos.get('total_pendiente', 0)))
+        facturas_pendientes = metricas.get('facturas_pendientes', datos.get('total_facturas', datos.get('num_facturas', 0)))
+        clientes_deudores = metricas.get('clientes_deudores', len(datos.get('por_cliente', [])))
+        antiguedad_prom = metricas.get('antiguedad_promedio', 0)
+
+        # Aging buckets — convierte ambos formatos de por_antiguedad
+        ag = datos.get('por_antiguedad', {})
+        vigente  = metricas.get('vigente',      ag.get('0. Por vencer',  ag.get('Al corriente', 0)))
+        v30_60   = metricas.get('vencido_30_60', ag.get('1. 1-30 días',   ag.get('1-30 días',    0)))
+        v60_90   = metricas.get('vencido_60_90', ag.get('2. 31-60 días',  ag.get('31-60 días',   0)))
+        v90_plus = metricas.get('vencido_90_plus',
+                                ag.get('4. +90 días', ag.get('Más de 90 días', 0))
+                                + ag.get('3. 61-90 días', ag.get('61-90 días', 0)))
+        total_aged = vigente + v30_60 + v60_90 + v90_plus or 1
+        pct_vigente = metricas.get('pct_vigente', vigente / total_aged * 100)
+        pct_30_60   = metricas.get('pct_30_60',   v30_60  / total_aged * 100)
+        pct_60_90   = metricas.get('pct_60_90',   v60_90  / total_aged * 100)
+        pct_90_plus = metricas.get('pct_90_plus',  v90_plus / total_aged * 100)
+
+        # Top deudores — cualquier formato
+        top_raw = datos.get('top_deudores', [
+            {'cliente': d.get('cliente', ''), 'monto': d.get('saldo', d.get('monto', 0)), 'dias_vencido': d.get('dias_vencido', 0)}
+            for d in datos.get('por_cliente', [])[:10]
+        ])
+
         md = f"""## Análisis Especializado de Cuentas por Cobrar
 
 ### Confianza de Datos: **{confianza:.1f}%**
@@ -479,34 +507,58 @@ _Ver tabla de datos. ¿Quieres análisis, predicción o reporte?_"""
 ### Resumen General
 | Métrica | Valor |
 |---------|-------|
-| Total por Cobrar | **{self._m}{metricas.get('total_cxc', 0):,.2f}** |
-| Facturas Pendientes | **{metricas.get('facturas_pendientes', 0)}** |
-| Clientes Deudores | **{metricas.get('clientes_deudores', 0)}** |
-| Antigüedad Promedio | **{metricas.get('antiguedad_promedio', 0):.0f}** días |
+| Total por Cobrar | **{self._m}{total_cxc:,.2f}** |
+| Facturas Pendientes | **{facturas_pendientes}** |
+| Clientes Deudores | **{clientes_deudores}** |
+| Antigüedad Promedio | **{antiguedad_prom:.0f}** días |
 
 ### Análisis por Antigüedad
-| Período | Monto | % | Facturas |
-|---------|-------|---|----------|
-| Vigente (0-30 días) | {self._m}{metricas.get('vigente', 0):,.2f} | {metricas.get('pct_vigente', 0):.1f}% | {metricas.get('facturas_vigentes', 0)} |
-| Vencido 30-60 días | {self._m}{metricas.get('vencido_30_60', 0):,.2f} | {metricas.get('pct_30_60', 0):.1f}% | {metricas.get('facturas_30_60', 0)} |
-| Vencido 60-90 días | {self._m}{metricas.get('vencido_60_90', 0):,.2f} | {metricas.get('pct_60_90', 0):.1f}% | {metricas.get('facturas_60_90', 0)} |
-| Vencido +90 días | {self._m}{metricas.get('vencido_90_plus', 0):,.2f} | {metricas.get('pct_90_plus', 0):.1f}% | {metricas.get('facturas_90_plus', 0)} |
+| Período | Monto | % |
+|---------|-------|---|
+| Vigente (0-30 días) | {self._m}{vigente:,.2f} | {pct_vigente:.1f}% |
+| Vencido 30-60 días | {self._m}{v30_60:,.2f} | {pct_30_60:.1f}% |
+| Vencido 60-90 días | {self._m}{v60_90:,.2f} | {pct_60_90:.1f}% |
+| Vencido +90 días | {self._m}{v90_plus:,.2f} | {pct_90_plus:.1f}% |
 
 ### Top Deudores
 """
-        deudores = datos.get('top_deudores', [])
-        if deudores:
+        if top_raw:
             md += "| # | Cliente | Monto | Días Vencido |\n|---|---------|-------|-------------|\n"
-            for i, d in enumerate(deudores[:10], 1):
+            for i, d in enumerate(top_raw[:10], 1):
                 md += f"| {i} | {str(d.get('cliente', ''))[:30]} | {self._m}{d.get('monto', 0):,.2f} | {d.get('dias_vencido', 0)} |\n"
-        
+
         return md
 
     def _formatear_cxp_especializado(self, datos: Dict) -> str:
-        """Formatear cuentas por pagar con análisis especializado."""
+        """Formatear cuentas por pagar con análisis especializado.
+        Acepta datos de analizador_avanzado.cuentas_por_pagar() o consultas_especializadas.
+        """
         metricas = datos.get('metricas', {})
-        confianza = datos.get('confianza', 0)
-        
+        confianza = datos.get('confianza', datos.get('confianza_datos', 0))
+
+        total_cxp = metricas.get('total_cxp', datos.get('total', datos.get('total_pendiente', 0)))
+        facturas_pendientes = metricas.get('facturas_pendientes', datos.get('total_facturas', datos.get('num_facturas', 0)))
+        proveedores = metricas.get('proveedores', len(datos.get('por_proveedor', [])))
+        antiguedad_prom = metricas.get('antiguedad_promedio', 0)
+
+        ag = datos.get('por_antiguedad', {})
+        vigente  = metricas.get('vigente',       ag.get('0. Por vencer',  ag.get('Al corriente', 0)))
+        v30_60   = metricas.get('vencido_30_60',  ag.get('1. 1-30 días',   ag.get('1-30 días',    0)))
+        v60_90   = metricas.get('vencido_60_90',  ag.get('2. 31-60 días',  ag.get('31-60 días',   0)))
+        v90_plus = metricas.get('vencido_90_plus',
+                                ag.get('4. +90 días', ag.get('Más de 90 días', 0))
+                                + ag.get('3. 61-90 días', ag.get('61-90 días', 0)))
+        total_aged = vigente + v30_60 + v60_90 + v90_plus or 1
+        pct_vigente = metricas.get('pct_vigente', vigente / total_aged * 100)
+        pct_30_60   = metricas.get('pct_30_60',   v30_60  / total_aged * 100)
+        pct_60_90   = metricas.get('pct_60_90',   v60_90  / total_aged * 100)
+        pct_90_plus = metricas.get('pct_90_plus',  v90_plus / total_aged * 100)
+
+        top_raw = datos.get('top_proveedores', [
+            {'proveedor': d.get('proveedor', d.get('cliente', '')), 'monto': d.get('saldo', d.get('monto', 0)), 'dias_vencido': d.get('dias_vencido', 0)}
+            for d in datos.get('por_proveedor', datos.get('por_cliente', []))[:10]
+        ])
+
         md = f"""## Análisis Especializado de Cuentas por Pagar
 
 ### Confianza de Datos: **{confianza:.1f}%**
@@ -514,34 +566,33 @@ _Ver tabla de datos. ¿Quieres análisis, predicción o reporte?_"""
 ### Resumen General
 | Métrica | Valor |
 |---------|-------|
-| Total por Pagar | **{self._m}{metricas.get('total_cxp', 0):,.2f}** |
-| Facturas Pendientes | **{metricas.get('facturas_pendientes', 0)}** |
-| Proveedores | **{metricas.get('proveedores', 0)}** |
-| Antigüedad Promedio | **{metricas.get('antiguedad_promedio', 0):.0f}** días |
+| Total por Pagar | **{self._m}{total_cxp:,.2f}** |
+| Facturas Pendientes | **{facturas_pendientes}** |
+| Proveedores | **{proveedores}** |
+| Antigüedad Promedio | **{antiguedad_prom:.0f}** días |
 
 ### Análisis por Antigüedad
-| Período | Monto | % | Facturas |
-|---------|-------|---|----------|
-| Vigente (0-30 días) | {self._m}{metricas.get('vigente', 0):,.2f} | {metricas.get('pct_vigente', 0):.1f}% | {metricas.get('facturas_vigentes', 0)} |
-| Vencido 30-60 días | {self._m}{metricas.get('vencido_30_60', 0):,.2f} | {metricas.get('pct_30_60', 0):.1f}% | {metricas.get('facturas_30_60', 0)} |
-| Vencido 60-90 días | {self._m}{metricas.get('vencido_60_90', 0):,.2f} | {metricas.get('pct_60_90', 0):.1f}% | {metricas.get('facturas_60_90', 0)} |
-| Vencido +90 días | {self._m}{metricas.get('vencido_90_plus', 0):,.2f} | {metricas.get('pct_90_plus', 0):.1f}% | {metricas.get('facturas_90_plus', 0)} |
+| Período | Monto | % |
+|---------|-------|---|
+| Vigente (0-30 días) | {self._m}{vigente:,.2f} | {pct_vigente:.1f}% |
+| Vencido 30-60 días | {self._m}{v30_60:,.2f} | {pct_30_60:.1f}% |
+| Vencido 60-90 días | {self._m}{v60_90:,.2f} | {pct_60_90:.1f}% |
+| Vencido +90 días | {self._m}{v90_plus:,.2f} | {pct_90_plus:.1f}% |
 
 ### Top Proveedores por Pagar
 """
-        proveedores = datos.get('top_proveedores', [])
-        if proveedores:
+        if top_raw:
             md += "| # | Proveedor | Monto | Días Vencido |\n|---|-----------|-------|-------------|\n"
-            for i, p in enumerate(proveedores[:10], 1):
+            for i, p in enumerate(top_raw[:10], 1):
                 md += f"| {i} | {str(p.get('proveedor', ''))[:30]} | {self._m}{p.get('monto', 0):,.2f} | {p.get('dias_vencido', 0)} |\n"
-        
+
         return md
 
     def _formatear_pos_especializado(self, datos: Dict) -> str:
         """Formatear análisis especializado de Punto de Venta."""
         metricas = datos.get('metricas', {})
         confianza = datos.get('confianza', 0)
-        
+
         md = f"""## Análisis Especializado de Punto de Venta
 
 ### Confianza de Datos: **{confianza:.1f}%**

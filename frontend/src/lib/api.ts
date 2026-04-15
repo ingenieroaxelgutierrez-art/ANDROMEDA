@@ -40,9 +40,23 @@ export interface MensajeChat {
   content: string;
 }
 
+/** Respuesta del backend POST /chat — alineada con RespuestaAPI de schemas.py */
 export interface RespuestaChat {
+  /** Último mensaje del asistente (texto plano o Markdown). */
   respuesta: string;
+  /** Historial actualizado incluyendo el mensaje del usuario y la respuesta. */
   historial: MensajeChat[];
+  /**
+   * HTML con tabla de datos o gráfica Plotly/Matplotlib.
+   * Vacío si la consulta no produce datos visualizables.
+   */
+  tabla_html: string;
+  /** Estado interno del pipeline, ej. "✓ ventas [AgentVentas] (95%)". */
+  status: string;
+  /** ID de sesión generado o ecoado. */
+  session_id: string;
+  /** ISO 8601 del momento de procesamiento. */
+  timestamp: string;
   metricas?: Record<string, unknown>;
 }
 
@@ -255,6 +269,7 @@ export async function getMe(): Promise<UsuarioActual> {
 export async function enviarMensaje(
   mensaje: string,
   sessionId: string,
+  historialPrevio: MensajeChat[] = [],
   empresaId?: string
 ): Promise<RespuestaChat> {
   const res = await _fetch("/chat", {
@@ -262,6 +277,7 @@ export async function enviarMensaje(
     body: JSON.stringify({
       mensaje,
       session_id: sessionId,
+      historial: historialPrevio,
       empresa_id: empresaId,
     }),
   });

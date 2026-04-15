@@ -40,7 +40,7 @@ export default function AdminChatPage() {
     setError(null);
 
     try {
-      const resp = await enviarMensaje(texto, sessionId, empresaId ?? undefined);
+      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined);
       setMensajes(resp.historial);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error al enviar el mensaje.");

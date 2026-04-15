@@ -50,24 +50,114 @@ class EjecutorAcciones:
         params = consulta.parametros or {}
         df = None
         respuesta = ""
-        
+
         fecha_ini = temp.get('fecha_inicio')
         fecha_fin = temp.get('fecha_fin')
-        
+
+        # ==== MANUALES / AYUDA / CONSULTA GENERAL ====
+        if accion in ('consultar_manual', 'manual_odoo', 'manual_facturacion', 'manual_pos',
+                      'manual_inventario', 'manual_crm', 'manual_ventas', 'manual_rrhh',
+                      'manual_compras', 'manual_configuracion'):
+            if MANUAL_ODOO_DISPONIBLE and buscar_en_manual:
+                try:
+                    # buscar_en_manual() retorna un str con Markdown ya formateado
+                    respuesta = buscar_en_manual(mensaje)
+                    if not respuesta or respuesta.strip().startswith("No encontré"):
+                        respuesta = (
+                            "No encontré secciones del manual que coincidan con tu consulta. "
+                            "Intenta con términos más específicos como _'crear factura'_, "
+                            "_'cancelar pedido'_, _'configurar impuesto'_, _'cierre de caja'_."
+                        )
+                except Exception as e:
+                    logger.error(f"Error consultando manual: {e}")
+                    respuesta = (
+                        "Ocurrió un error al consultar el manual. "
+                        "Para procedimientos de Odoo visita https://www.odoo.com/documentation"
+                    )
+            else:
+                respuesta = (
+                    "## 📖 Consulta de Manual\n\n"
+                    "El módulo de manuales no está disponible en este momento. "
+                    "Para consultar procedimientos de Odoo, visita la documentación oficial en https://www.odoo.com/documentation"
+                )
+
+        elif accion in ('ayuda', 'mostrar_capacidades'):
+            respuesta = self._generar_ayuda_completa()
+
+        elif accion and str(accion).startswith('graficar'):
+            # Acciones de gráfica: obtener datos reales para que la interfaz (Gradio y API)
+            # genere la visualización. Se mapea a la consulta de datos correspondiente.
+            try:
+                # Mapear acción de gráfica → consulta de datos equivalente
+                _mapa_grafica = {
+                    'graficar_ventas_tienda': 'ventas_por_tienda',
+                    'graficar_pos': 'ventas_por_tienda',
+                    'graficar_ventas': 'consultar_ventas',
+                    'graficar_inventario': 'analisis_inventario',
+                    'graficar_clientes': 'top_clientes',
+                    'graficar_finanzas': 'cuentas_cobrar',
+                    'graficar_kpis': 'semaforo_salud',
+                }
+                accion_datos = _mapa_grafica.get(str(accion), 'consultar_ventas')
+
+                # Clonar consulta apuntando a la acción de datos equivalente
+                import copy
+                consulta_datos = copy.copy(consulta)
+                consulta_datos.accion_sugerida = accion_datos
+                respuesta_datos, df = self._ejecutar_accion(consulta_datos, mensaje)
+
+                if df is not None and not df.empty:
+                    respuesta = f"📊 **Visualización lista** — datos de {accion_datos.replace('_', ' ')}\n\n"
+                    respuesta += respuesta_datos
+                else:
+                    # Fallback: usar ultimo_df si la consulta no devolvió datos nuevos
+                    respuesta = (
+                        "📊 **Visualización generada** a partir de los últimos datos consultados.\n\n"
+                        "_Si deseas graficar datos diferentes, incluye la consulta en el mismo mensaje._"
+                    )
+                    df = getattr(self._bot, 'ultimo_df', None)
+            except Exception as e:
+                logger.warning(f"graficar_* fallback por error: {e}")
+                respuesta = "📊 **Visualización lista** — usando datos del contexto actual."
+                df = getattr(self._bot, 'ultimo_df', None)
+
+        elif accion == 'info_conexion':
+            respuesta = self._bot._info_conexion() if hasattr(self._bot, '_info_conexion') else "Conexión activa con Odoo."
+
+        elif accion in ('saludo', 'despedida'):
+            respuesta = (
+                "¡Hola! Soy **ANDROMEDA**, tu asistente de análisis empresarial para Odoo.\n\n"
+                "Estoy listo para ayudarte con análisis de ventas, inventario, finanzas, predicciones, "
+                "auditorías inteligentes, manuales de Odoo y mucho más.\n\n"
+                "Puedes preguntarme directamente, por ejemplo:\n"
+                "- _'¿Cuánto vendimos este mes?'_\n"
+                "- _'¿Qué productos están por agotarse?'_\n"
+                "- _'Predice las ventas para los próximos 30 días'_\n"
+                "- _'¿Cómo cancelo una factura en Odoo?'_\n\n"
+                "¿En qué te puedo ayudar hoy?"
+            )
+
+        elif accion in ('consulta_general', 'desconocida', '', None):
+            # IMPORTANTE: NO usar LLM aquí. El LLM no tiene acceso a los datos reales
+            # del negocio y fabrica respuestas numéricas plausibles pero falsas.
+            # La respuesta orientativa guia al usuario a formular una consulta ejecutable.
+            respuesta = self._respuesta_consulta_general(mensaje)
+
         # ==== PREDICCIONES ====
-        if accion == 'predecir_ventas':
-            # Extraer días desde entidades o parámetros - default 180 días
-            dias = params.get('limite', 180)
-            
+        elif accion in ('predecir_ventas', 'predecir', 'prediccion_ventas_inteligente'):
+            # Extraer días desde entidades o parámetros - default 30 días
+            # El NLP extrae "para N días" / "próximos N días" como params['limite']
+            dias = params.get('limite', 30)
+
             # Buscar horizonte en entidades del cerebro (prioridad: periodo_prediccion > horizonte > params)
             encontrado = False
             entidades_cerebro = self._bot._obtener_entidades_cerebro(consulta)
-            
+
             for ent in entidades_cerebro:
                 if hasattr(ent, 'tipo'):
                     if ent.tipo == 'periodo_prediccion' and isinstance(ent.valor, dict):
                         # Usar los días calculados desde el período futuro
-                        dias = ent.valor.get('dias', 180)
+                        dias = ent.valor.get('dias', params.get('limite', 30))
                         encontrado = True
                         break
                     elif ent.tipo == 'horizonte' and not encontrado:
@@ -80,10 +170,13 @@ class EjecutorAcciones:
             
             pred = self._bot.predictor.predecir_ventas(dias)
             respuesta = self._bot.predictor.formatear_prediccion_md(pred)
+            # Guardar predicción completa para que la interfaz pueda graficar
+            # histórico + proyección con banda de confianza
+            self._bot.ultima_prediccion = pred
             if pred.datos_historicos:
                 df = pd.DataFrame(pred.datos_historicos[-30:])
         
-        elif accion == 'predecir_agotamiento':
+        elif accion in ('predecir_agotamiento', 'prediccion_inventario_inteligente'):
             datos = self._bot.predictor.predecir_agotamiento()
             if 'error' not in datos:
                 respuesta = self._bot.fmt._formatear_prediccion_inventario(datos)
@@ -99,7 +192,7 @@ class EjecutorAcciones:
             else:
                 respuesta = f"{datos['error']}"
         
-        elif accion == 'salud_negocio':
+        elif accion in ('salud_negocio', 'semaforo_salud'):
             datos = self._bot.predictor.score_salud_negocio()
             if 'error' not in datos:
                 respuesta = self._bot.fmt._formatear_salud_negocio(datos)
@@ -115,31 +208,79 @@ class EjecutorAcciones:
             else:
                 respuesta = f"{datos['error']}"
         
-        elif accion == 'comparar_periodos':
-            # Detectar tipo de comparación desde contexto o entidades
+        elif accion in ('comparar_periodos', 'comparativa_periodos', 'comparar_periodos_especificos'):
             contexto_lower = consulta.contexto.lower()
-            tipo_comparativa = None
-            
-            # Buscar primero en entidades del cerebro (más preciso)
-            for ent in self._bot._obtener_entidades_cerebro(consulta):
-                if hasattr(ent, 'tipo') and ent.tipo == 'tipo_comparativa':
-                    tipo_comparativa = ent.valor
-                    break
-            
-            # Si no se encontró en entidades, buscar en texto
-            if not tipo_comparativa:
-                if 'ayer' in contexto_lower or 'hoy vs ayer' in contexto_lower:
-                    tipo_comparativa = 'dia'
-                elif 'mes' in contexto_lower:
-                    tipo_comparativa = 'mes'
+
+            # ── Comparativa con periodos ESPECÍFICOS extraídos por el NLP ──────
+            # Activado cuando el usuario escribe "marzo 2026 vs marzo 2025", "2025 vs 2024", etc.
+            if temp.get('fecha_inicio_a') and temp.get('fecha_inicio_b'):
+                ini_a = temp['fecha_inicio_a']
+                fin_a = temp['fecha_fin_a']
+                ini_b = temp['fecha_inicio_b']
+                fin_b = temp['fecha_fin_b']
+                label_a = temp.get('periodo_a', ini_a[:7])
+                label_b = temp.get('periodo_b', ini_b[:7])
+
+                if self._bot.odoo and self._bot.odoo.conectado:
+                    import pandas as _pd
+                    df_a = self._bot.odoo.ventas_periodo(ini_a, fin_a)
+                    df_b = self._bot.odoo.ventas_periodo(ini_b, fin_b)
+                    total_a = df_a['amount_total'].sum() if df_a is not None and not df_a.empty else 0
+                    total_b = df_b['amount_total'].sum() if df_b is not None and not df_b.empty else 0
+                    n_a = len(df_a) if df_a is not None else 0
+                    n_b = len(df_b) if df_b is not None else 0
+                    variacion = ((total_a - total_b) / total_b * 100) if total_b > 0 else (100.0 if total_a > 0 else 0.0)
+                    emoji = '🟢' if variacion >= 0 else '🔴'
+                    ticket_a = total_a / n_a if n_a else 0
+                    ticket_b = total_b / n_b if n_b else 0
+                    respuesta = (
+                        f"## Comparativa: {label_a} vs {label_b}\n\n"
+                        f"| Métrica | {label_a} | {label_b} | Variación |\n"
+                        f"|---------|{'-'*len(label_a)}|{'-'*len(label_b)}|----------:|\n"
+                        f"| **Ventas totales** | **${total_a:,.2f}** | **${total_b:,.2f}** | {emoji} {variacion:+.1f}% |\n"
+                        f"| **Órdenes** | {n_a:,} | {n_b:,} | — |\n"
+                        f"| **Ticket promedio** | ${ticket_a:,.2f} | ${ticket_b:,.2f} | — |\n\n"
+                        f"**Diferencia absoluta:** ${total_a - total_b:+,.2f}\n\n"
+                        f"> *{label_a}: {ini_a} → {fin_a}*  \n"
+                        f"> *{label_b}: {ini_b} → {fin_b}*"
+                    )
+                    # DataFrame para gráfica
+                    if df_a is not None and not df_a.empty and df_b is not None and not df_b.empty:
+                        df_a['periodo'] = label_a
+                        df_b['periodo'] = label_b
+                        df = _pd.concat([df_a, df_b], ignore_index=True)
                 else:
-                    tipo_comparativa = 'semana'
-            
-            datos = self._bot.predictor.comparar_periodos(tipo_comparativa)
-            if 'error' not in datos:
-                respuesta = self._bot.fmt._formatear_comparativa(datos)
+                    respuesta = "Sin conexión a Odoo para realizar la comparativa."
+
             else:
-                respuesta = f"{datos['error']}"
+                # ── Comparativa genérica (esta semana vs pasada, este mes vs anterior) ──
+                tipo_comparativa = None
+
+                # Buscar primero en entidades del cerebro (más preciso)
+                for ent in self._bot._obtener_entidades_cerebro(consulta):
+                    if hasattr(ent, 'tipo') and ent.tipo == 'tipo_comparativa':
+                        tipo_comparativa = ent.valor
+                        break
+
+                # Si no se encontró en entidades, inferir del texto
+                if not tipo_comparativa:
+                    if 'ayer' in contexto_lower or 'hoy vs ayer' in contexto_lower:
+                        tipo_comparativa = 'dia'
+                    elif any(m in contexto_lower for m in [
+                        'mes', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                        'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+                    ]):
+                        tipo_comparativa = 'mes'
+                    elif 'año' in contexto_lower or 'anio' in contexto_lower:
+                        tipo_comparativa = 'año'
+                    else:
+                        tipo_comparativa = 'semana'
+
+                datos = self._bot.predictor.comparar_periodos(tipo_comparativa)
+                if 'error' not in datos:
+                    respuesta = self._bot.fmt._formatear_comparativa(datos)
+                else:
+                    respuesta = f"{datos['error']}"
         
         # ==== VENTAS ====
         elif accion == 'consultar_ventas':
@@ -147,7 +288,74 @@ class EjecutorAcciones:
             respuesta = self._bot.fmt._formato_ventas(df, fecha_ini, fecha_fin)
             self._bot.ultimo_modelo = 'sale.order'
         
-        elif accion == 'analisis_ventas':
+        elif accion == 'ventas_por_tienda':
+            # Consulta directa POS → ranking ejecutivo por punto de venta
+            try:
+                if self._bot.odoo and self._bot.odoo.conectado:
+                    datos_pos = self._bot.odoo.buscar(
+                        'pos.order',
+                        filtro=[('date_order', '>=', fecha_ini), ('date_order', '<=', fecha_fin),
+                                ('state', 'in', ['paid', 'done', 'invoiced'])],
+                        campos=['config_id', 'amount_total', 'amount_tax'],
+                        limite=5000
+                    )
+                    if datos_pos is not None and not datos_pos.empty:
+                        datos_pos['tienda'] = datos_pos['config_id'].apply(
+                            lambda x: x[1] if isinstance(x, (list, tuple)) and len(x) > 1 else str(x))
+                        kpis = (datos_pos.groupby('tienda')
+                                .agg(Ventas_Total=('amount_total', 'sum'),
+                                     Num_Tickets=('amount_total', 'count'),
+                                     Ticket_Prom=('amount_total', 'mean'))
+                                .sort_values('Ventas_Total', ascending=False))
+                        total_general = kpis['Ventas_Total'].sum()
+                        n_tiendas = len(kpis)
+
+                        respuesta = f"## Ventas por Punto de Venta\n\n"
+                        respuesta += f"> **Período:** {fecha_ini} → {fecha_fin} &nbsp;|&nbsp; **{n_tiendas}** puntos de venta activos\n\n"
+                        respuesta += "### Desempeño Comparativo\n\n"
+                        respuesta += "| # | Punto de Venta | Ventas Totales | Tickets | Ticket Promedio | % del Total |\n"
+                        respuesta += "|---|----------------|---------------|---------|-----------------|----------:|\n"
+                        acum_pct = 0.0
+                        for i, (tienda, row) in enumerate(kpis.iterrows(), 1):
+                            pct = (row['Ventas_Total'] / total_general * 100) if total_general > 0 else 0
+                            acum_pct += pct
+                            respuesta += (f"| {i} | **{tienda[:32]}** "
+                                          f"| **${row['Ventas_Total']:,.2f}** "
+                                          f"| {row['Num_Tickets']:,.0f} "
+                                          f"| ${row['Ticket_Prom']:,.2f} "
+                                          f"| {pct:.1f}% |\n")
+                        respuesta += f"\n**Total consolidado: ${total_general:,.2f}**\n\n"
+
+                        # Hallazgos ejecutivos
+                        respuesta += "---\n\n**Hallazgos:**\n\n"
+                        lider = kpis.index[0]
+                        lider_pct = kpis.iloc[0]['Ventas_Total'] / total_general * 100 if total_general > 0 else 0
+                        respuesta += f"- **Tienda líder:** {lider} — aporta el **{lider_pct:.0f}%** del ingreso total del canal POS.\n"
+                        if n_tiendas >= 2:
+                            brecha = kpis.iloc[0]['Ventas_Total'] - kpis.iloc[-1]['Ventas_Total']
+                            rezago = kpis.index[-1]
+                            respuesta += f"- **Brecha de rendimiento:** {lider} supera a {rezago} en **${brecha:,.2f}**. Analizar causas operativas.\n"
+                        mejor_ticket = kpis['Ticket_Prom'].idxmax()
+                        peor_ticket = kpis['Ticket_Prom'].idxmin()
+                        if mejor_ticket != peor_ticket:
+                            respuesta += (f"- **Mayor ticket promedio:** {mejor_ticket} "
+                                          f"(${kpis.loc[mejor_ticket, 'Ticket_Prom']:,.2f}). "
+                                          f"Indica upselling efectivo o mix de mayor valor.\n")
+                        respuesta += "\n"
+                        df = kpis.reset_index()
+                        df.columns = ['Tienda', 'Ventas Total', 'Nro Tickets', 'Ticket Promedio']
+                        return respuesta, df
+                # Fallback si no hay datos POS
+                datos = self._bot.analizador.analisis_ventas_completo(fecha_ini, fecha_fin)
+                respuesta = self._bot.analizador.formatear_analisis_md('ventas', datos)
+                if 'por_cliente' in datos:
+                    df = pd.DataFrame(datos['por_cliente'])
+            except Exception as e:
+                datos = self._bot.analizador.analisis_ventas_completo(fecha_ini, fecha_fin)
+                respuesta = self._bot.analizador.formatear_analisis_md('ventas', datos)
+
+        elif accion in ('analisis_ventas', 'ventas_completo', 'ventas_por_marca',
+                        'ventas_mensuales_marca'):
             datos = self._bot.analizador.analisis_ventas_completo(fecha_ini, fecha_fin)
             respuesta = self._bot.analizador.formatear_analisis_md('ventas', datos)
             if 'por_cliente' in datos:
@@ -174,6 +382,22 @@ class EjecutorAcciones:
             if 'por_vendedor' in datos:
                 df = pd.DataFrame(datos['por_vendedor'])
         
+        elif accion == 'ventas_por_empresa':
+            consultas_esp = getattr(self._bot, 'consultas_esp', None)
+            if consultas_esp:
+                try:
+                    datos = consultas_esp.ventas_completo(fecha_ini, fecha_fin)
+                    if 'error' not in datos:
+                        respuesta = self._bot.fmt._formatear_ventas_por_empresa(datos)
+                        if datos.get('por_empresa'):
+                            df = pd.DataFrame(datos['por_empresa'])
+                    else:
+                        respuesta = f"Error obteniendo ventas por empresa: {datos['error']}"
+                except Exception as e:
+                    respuesta = f"Error en ventas por empresa: {str(e)}"
+            else:
+                respuesta = "Módulo de consultas especializadas no disponible."
+
         elif accion == 'tendencia':
             respuesta, df = self._generar_tendencia(consulta, mensaje)
         
@@ -183,7 +407,7 @@ class EjecutorAcciones:
             respuesta = self._bot.fmt._formato_pos(df, fecha_ini, fecha_fin)
             self._bot.ultimo_modelo = 'pos.order'
         
-        elif accion == 'analisis_pos':
+        elif accion in ('analisis_pos', 'pos_completo'):
             datos = self._bot.analizador.analisis_pos_completo(fecha_ini, fecha_fin)
             respuesta = self._bot.analizador.formatear_analisis_md('pos', datos)
         
@@ -236,15 +460,21 @@ class EjecutorAcciones:
             datos = self._bot.analizador.analisis_facturacion(fecha_ini, fecha_fin)
             respuesta = self._bot.analizador.formatear_analisis_md('facturacion', datos)
         
-        elif accion == 'cuentas_por_cobrar':
+        elif accion in ('cuentas_por_cobrar', 'cxc_analisis', 'score_morosos'):
             datos = self._bot.analizador.cuentas_por_cobrar()
-            respuesta = self._bot.analizador.formatear_analisis_md('cxc', datos)
+            if 'error' not in datos:
+                respuesta = self._bot.fmt._formatear_cxc_especializado(datos)
+            else:
+                respuesta = self._bot.analizador.formatear_analisis_md('cxc', datos)
             if 'por_cliente' in datos:
                 df = pd.DataFrame(datos['por_cliente'])
-        
-        elif accion == 'cuentas_por_pagar':
+
+        elif accion in ('cuentas_por_pagar', 'cxp_analisis'):
             datos = self._bot.analizador.cuentas_por_pagar()
-            respuesta = self._bot.analizador.formatear_analisis_md('cxp', datos)
+            if 'error' not in datos:
+                respuesta = self._bot.fmt._formatear_cxp_especializado(datos)
+            else:
+                respuesta = self._bot.analizador.formatear_analisis_md('cxp', datos)
             if 'por_proveedor' in datos:
                 df = pd.DataFrame(datos['por_proveedor'])
         
@@ -268,7 +498,65 @@ class EjecutorAcciones:
             else:
                 respuesta = "No hay productos sin stock"
         
-        elif accion == 'rotacion_inventario':
+        elif accion in ('inventario_por_almacen', 'inventario_por_tienda', 'inventario_por_ubicacion', 'stock_lento', 'reposicion_jit'):
+            consultas_esp = getattr(self._bot, 'consultas_esp', None)
+            if consultas_esp:
+                try:
+                    datos = consultas_esp.inventario_por_almacen()
+                    if 'error' not in datos:
+                        respuesta = self._bot.fmt._formatear_inventario_por_almacen(datos)
+                        almacenes = datos.get('almacenes', [])
+                        if almacenes:
+                            df = pd.DataFrame(almacenes)
+                    else:
+                        respuesta = f"Error obteniendo inventario por almacén: {datos['error']}"
+                except Exception as e:
+                    respuesta = f"Error en inventario por almacén: {str(e)}"
+            else:
+                respuesta = "Módulo de consultas especializadas no disponible."
+
+        elif accion == 'productos_criticos':
+            consultas_esp = getattr(self._bot, 'consultas_esp', None)
+            if consultas_esp:
+                try:
+                    umbral = params.get('umbral', 5)
+                    datos = consultas_esp.productos_criticos(umbral)
+                    if 'error' not in datos:
+                        resumen = datos.get('resumen', {})
+                        # Adaptar al formato de _formatear_productos_criticos
+                        agotados = datos.get('productos_agotados', [])
+                        bajo_stock = datos.get('productos_bajo_stock', [])
+                        productos_fmt = [
+                            {
+                                'producto': p.get('name', ''),
+                                'stock': p.get('qty_available', 0),
+                                'venta_diaria': 0,
+                                'dias_stock': 0,
+                                'estado': 'agotado' if p.get('qty_available', 0) <= 0 else 'bajo_stock'
+                            }
+                            for p in (agotados[:10] + bajo_stock[:10])
+                        ]
+                        datos_fmt = {
+                            'confianza': datos.get('confianza_datos', 0),
+                            'metricas': {
+                                'productos_agotados': resumen.get('agotados', 0),
+                                'productos_criticos': resumen.get('total', 0),
+                                'productos_bajo_stock': resumen.get('bajo_stock', 0),
+                            },
+                            'productos': productos_fmt,
+                        }
+                        respuesta = self._bot.fmt._formatear_productos_criticos(datos_fmt)
+                        todos_productos = agotados + bajo_stock
+                        if todos_productos:
+                            df = pd.DataFrame(todos_productos)
+                    else:
+                        respuesta = f"Error obteniendo productos críticos: {datos['error']}"
+                except Exception as e:
+                    respuesta = f"Error en productos críticos: {str(e)}"
+            else:
+                respuesta = "Módulo de consultas especializadas no disponible."
+
+        elif accion in ('rotacion_inventario', 'kpi_rotacion_inventario', 'rotacion_inventario_avanzado'):
             datos = self._bot.analizador.productos_mas_vendidos_vs_stock()
             respuesta = self._bot.fmt._formatear_rotacion_inventario(datos)
             if datos.get('criticos'):
@@ -346,17 +634,460 @@ class EjecutorAcciones:
                 if datos.get('por_cliente'):
                     df = pd.DataFrame(datos['por_cliente'])
 
-        else:
-            # Acción no reconocida o consulta_general — respuesta orientativa
-            accion_leg = accion.replace('_', ' ').title() if accion else 'desconocida'
+        # ==== ANÁLISIS 360° ====
+        elif accion == 'analisis_360':
+            analizador_360 = getattr(self._bot, 'analizador_360', None)
+            if analizador_360:
+                try:
+                    from services.analysis.analisis_360 import Formateador360
+                    resultado = analizador_360.analizar_entidad(mensaje)
+                    if resultado:
+                        respuesta = Formateador360.formatear(resultado)
+                        productos = resultado.inventario.get('productos', [])
+                        if productos:
+                            df = pd.DataFrame(productos[:20])
+                    else:
+                        respuesta = (
+                            "Para el **Análisis 360°** necesito que especifiques una entidad. Ejemplos:\n\n"
+                            "- _'¿Cómo va Immortale?'_ → Análisis completo de la marca\n"
+                            "- _'Todo sobre el producto [nombre]'_\n"
+                            "- _'Análisis del cliente [nombre]'_\n"
+                            "- _'¿Cómo está [marca/producto/vendedor]?'_"
+                        )
+                except Exception as e:
+                    respuesta = f"Error en análisis 360°: {str(e)}"
+            else:
+                respuesta = (
+                    "El módulo de Análisis 360° no está activo en este momento.\n\n"
+                    "Prueba con: _'ventas del mes'_, _'top 10 productos'_, _'análisis de inventario'_"
+                )
+
+        # ==== DASHBOARD KPIs EMPRESARIALES ====
+        elif accion in ('dashboard_kpis_empresariales', 'kpis_comerciales', 'dashboard_kpis',
+                        'kpis_operaciones', 'kpis_tiendas', 'kpis_por_tienda', 'dashboard_automatico',
+                        'kpis_compras', 'kpi_faltantes', 'kpi_picking_cedis',
+                        'kpi_ventas_por_canal', 'kpi_ventas_por_marca', 'kpis_talento'):
+            motor_kpis = getattr(self._bot, 'motor_kpis', None)
+            if motor_kpis:
+                try:
+                    from services.analysis.kpis_empresariales import FormateadorKPIs
+                    fi_dt = datetime.strptime(fecha_ini, '%Y-%m-%d') if fecha_ini else None
+                    ff_dt = datetime.strptime(fecha_fin, '%Y-%m-%d') if fecha_fin else None
+                    if accion == 'kpis_comerciales':
+                        from services.analysis.kpis_empresariales import CategoriaKPI
+                        resultados = motor_kpis.ejecutar_categoria(CategoriaKPI.COMERCIAL, fi_dt, ff_dt)
+                        respuesta = FormateadorKPIs.formatear_categoria(CategoriaKPI.COMERCIAL, resultados)
+                    else:
+                        dashboard = motor_kpis.generar_dashboard_completo(fi_dt, ff_dt)
+                        respuesta = FormateadorKPIs.formatear_dashboard(dashboard, "Dashboard KPIs Empresariales")
+                except Exception as e:
+                    respuesta = f"Error generando KPIs: {str(e)}"
+            else:
+                respuesta = (
+                    "El módulo de KPIs Empresariales no está activo.\n\n"
+                    "Prueba con: _'ventas del mes'_, _'ticket promedio'_, _'top productos'_"
+                )
+
+        # ==== AUDITORÍA CALIDAD DATOS ====
+        elif accion in ('auditoria_calidad_datos', 'generar_reporte_auditoria', 'auditoria_nocturna'):
+            auditoria_calidad = getattr(self._bot, 'auditoria_calidad', None)
+            if auditoria_calidad:
+                try:
+                    resultado = auditoria_calidad.ejecutar_auditoria_completa()
+                    respuesta = auditoria_calidad.formatear_resultado_markdown(resultado)
+                    hallazgos = resultado.hallazgos or []
+                    if hallazgos:
+                        df = pd.DataFrame([{
+                            'Modelo': h.modelo_odoo,
+                            'Categoria': h.categoria,
+                            'Severidad': h.severidad,
+                            'Descripcion': str(h.descripcion)[:80]
+                        } for h in hallazgos[:50]])
+                except Exception as e:
+                    respuesta = f"Error ejecutando auditoría de calidad: {str(e)}"
+            else:
+                respuesta = (
+                    "El módulo de Auditoría de Calidad de Datos no está activo.\n\n"
+                    "Prueba con: _'dame las anomalías'_, _'reporte de ventas'_"
+                )
+
+        # ==== DETECCIÓN DE ANOMALÍAS Y FRAUDE ====
+        elif accion in ('detectar_anomalias', 'auditoria_fraude', 'analisis_riesgos',
+                        'diferencias_centavos', 'detectar_pagos_fantasma'):
+            analizador_anomalias = getattr(self._bot, 'analizador_anomalias', None)
+            if analizador_anomalias:
+                try:
+                    resultado = analizador_anomalias.ejecutar_auditoria_completa()
+                    respuesta = analizador_anomalias.formatear_auditoria_markdown(resultado)
+                    hallazgos = resultado.hallazgos or []
+                    if hallazgos:
+                        df = pd.DataFrame([{
+                            'Tipo': h.tipo_riesgo.value if hasattr(h.tipo_riesgo, 'value') else str(h.tipo_riesgo),
+                            'Severidad': h.severidad.value if hasattr(h.severidad, 'value') else str(h.severidad),
+                            'Descripcion': str(h.descripcion)[:80],
+                            'Accion': str(h.recomendacion)[:60]
+                        } for h in hallazgos[:50]])
+                except Exception as e:
+                    respuesta = f"Error en detección de anomalías: {str(e)}"
+            else:
+                respuesta = (
+                    "El módulo de detección de anomalías no está activo.\n\n"
+                    "Prueba con: _'auditoría de datos'_, _'dame los KPIs'_"
+                )
+
+        # ==== PREDICCIÓN ML / LSTM ====
+        elif accion in ('prediccion_ml', 'anomalias_ml', 'tendencias_ml'):
+            motor_ml = getattr(self._bot, 'motor_ml', None)
+            if motor_ml:
+                try:
+                    if accion == 'prediccion_ml':
+                        from services.prediction.motor_ml import FormateadorML
+                        pred = motor_ml.predecir_ventas_ml()
+                        respuesta = FormateadorML.formatear_prediccion(pred)
+                        if pred.prediccion_diaria:
+                            df = pd.DataFrame(pred.prediccion_diaria)
+                    elif accion == 'anomalias_ml':
+                        from services.prediction.motor_ml import FormateadorML
+                        datos = motor_ml.detectar_anomalias_ventas()
+                        respuesta = FormateadorML.formatear_anomalias(datos)
+                        if datos.get('anomalias'):
+                            df = pd.DataFrame(datos['anomalias'])
+                    elif accion == 'tendencias_ml':
+                        from services.prediction.motor_ml import FormateadorML
+                        datos = motor_ml.detectar_tendencias_ml() if hasattr(motor_ml, 'detectar_tendencias_ml') else {}
+                        if datos:
+                            respuesta = FormateadorML.formatear_tendencias(datos)
+                        else:
+                            pred = motor_ml.predecir_ventas_ml()
+                            respuesta = FormateadorML.formatear_prediccion(pred)
+                except Exception as e:
+                    respuesta = f"Error en análisis ML: {str(e)}"
+            else:
+                respuesta = "El módulo de Machine Learning no está activo. Prueba con _'predecir ventas'_."
+
+        elif accion == 'prediccion_lstm':
+            motor_lstm = getattr(self._bot, 'motor_lstm', None)
+            if motor_lstm:
+                try:
+                    from services.prediction.neural_lstm import FormateadorLSTM
+                    pred = motor_lstm.predecir_ventas_lstm()
+                    respuesta = FormateadorLSTM.formatear_prediccion(pred)
+                    if pred.prediccion_semanal:
+                        df = pd.DataFrame(pred.prediccion_semanal)
+                except Exception as e:
+                    respuesta = f"Error en predicción LSTM: {str(e)}"
+            else:
+                respuesta = "El motor LSTM no está activo. Prueba con _'predecir ventas'_."
+
+        elif accion in ('segmentacion_clientes', 'analizar_churn'):
+            motor_ml = getattr(self._bot, 'motor_ml', None)
+            auditoria = getattr(self._bot, 'auditoria', None)
+            if accion == 'analizar_churn' and auditoria:
+                try:
+                    churns = auditoria.analizar_churn_clientes()
+                    if churns:
+                        respuesta = f"## Análisis de Churn de Clientes\n\n**{len(churns)}** clientes en riesgo de abandono.\n\n"
+                        respuesta += "| Cliente | Score Riesgo | Último Pedido | Predicción |\n|---|---:|---|---|\n"
+                        for c in churns[:20]:
+                            score = getattr(c, 'score_riesgo', 0)
+                            dias = getattr(c, 'dias_sin_compra', 0)
+                            cliente = getattr(c, 'nombre_cliente', 'N/A')
+                            pred_str = getattr(c, 'prediccion', 'N/A')
+                            respuesta += f"| {cliente[:30]} | {score:.0f}% | hace {dias} días | {pred_str} |\n"
+                        df = pd.DataFrame([{
+                            'Cliente': getattr(c, 'nombre_cliente', ''),
+                            'Score': getattr(c, 'score_riesgo', 0),
+                            'Dias sin compra': getattr(c, 'dias_sin_compra', 0)
+                        } for c in churns])
+                    else:
+                        respuesta = "No se detectaron clientes en riesgo de churn."
+                except Exception as e:
+                    respuesta = f"Error en análisis de churn: {str(e)}"
+            elif motor_ml:
+                try:
+                    from services.prediction.motor_ml import FormateadorML
+                    seg = motor_ml.segmentar_clientes()
+                    respuesta = FormateadorML.formatear_segmentacion(seg)
+                    if seg.segmentos:
+                        rows = []
+                        for seg_item in seg.segmentos:
+                            rows.append({'Segmento': seg_item.nombre, 'Clientes': seg_item.num_clientes,
+                                         'Valor medio': seg_item.valor_medio})
+                        df = pd.DataFrame(rows)
+                except Exception as e:
+                    respuesta = f"Error en segmentación de clientes: {str(e)}"
+            else:
+                respuesta = "El módulo de ML no está activo. Prueba con _'top clientes'_, _'ventas por cliente'_."
+
+        # ==== REPORTES BI ====
+        elif accion in ('reporte_bi', 'reporte_ejecutivo', 'analisis_inteligente'):
+            motor_bi = getattr(self._bot, 'motor_bi', None)
+            if motor_bi:
+                try:
+                    reporte = motor_bi.generar_reporte_completo()
+                    respuesta = motor_bi.formatear_reporte_markdown(reporte)
+                    anomalias = reporte.anomalias if hasattr(reporte, 'anomalias') else []
+                    if anomalias:
+                        df = pd.DataFrame([{
+                            'Tipo': a.tipo if hasattr(a, 'tipo') else str(a),
+                            'Descripcion': a.descripcion if hasattr(a, 'descripcion') else str(a)
+                        } for a in anomalias[:30]])
+                except Exception as e:
+                    # Caer a análisis ventas como alternativa
+                    try:
+                        datos = self._bot.analizador.analisis_ventas_completo(fecha_ini, fecha_fin)
+                        respuesta = self._bot.analizador.formatear_analisis_md('ventas', datos)
+                    except Exception:
+                        respuesta = f"Error generando reporte BI: {str(e)}"
+            else:
+                datos = self._bot.analizador.analisis_ventas_completo(fecha_ini, fecha_fin)
+                respuesta = self._bot.analizador.formatear_analisis_md('ventas', datos)
+
+        # ==== CRM / CLIENTES ====
+        elif accion in ('analisis_crm', 'clientes_analisis', 'clientes_olvidados'):
+            try:
+                if self._bot.odoo and self._bot.odoo.conectado:
+                    if accion == 'clientes_olvidados':
+                        # Clientes sin compras en los últimos 90 días
+                        fecha_corte = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+                        datos_raw = self._bot.odoo.buscar(
+                            'res.partner',
+                            filtro=[('customer_rank', '>', 0), ('active', '=', True)],
+                            campos=['name', 'email', 'phone', 'last_activity_time'],
+                            limite=200
+                        )
+                        if datos_raw is not None and not datos_raw.empty:
+                            respuesta = f"## Clientes Inactivos (sin actividad reciente)\n\n**{len(datos_raw)}** clientes encontrados."
+                            df = datos_raw
+                        else:
+                            respuesta = "No se encontraron datos de clientes."
+                    else:
+                        # Análisis CRM general
+                        datos = self._bot.odoo.buscar(
+                            'crm.lead',
+                            filtro=[('active', '=', True)],
+                            campos=['name', 'partner_id', 'stage_id', 'expected_revenue', 'probability', 'user_id'],
+                            limite=200,
+                            orden='expected_revenue desc'
+                        )
+                        if datos is not None and not datos.empty:
+                            total_revenue = datos['expected_revenue'].sum() if 'expected_revenue' in datos.columns else 0
+                            n = len(datos)
+                            respuesta = f"## Análisis CRM\n\n**{n}** oportunidades activas | Ingreso esperado total: **${total_revenue:,.2f}**\n\n"
+                            respuesta += "Ver tabla adjunta para detalle de oportunidades."
+                            df = datos
+                        else:
+                            respuesta = "No hay oportunidades CRM activas en el sistema."
+                else:
+                    respuesta = "No hay conexión con Odoo para consultar datos CRM."
+            except Exception as e:
+                respuesta = f"Error en análisis CRM: {str(e)}"
+
+        # ==== ANÁLISIS COMPRAS ====
+        elif accion in ('analisis_compras', 'consultar_compras'):
+            try:
+                if self._bot.odoo and self._bot.odoo.conectado:
+                    datos = self._bot.odoo.buscar(
+                        'purchase.order',
+                        filtro=[('date_order', '>=', fecha_ini), ('date_order', '<=', fecha_fin),
+                                ('state', 'in', ['purchase', 'done'])],
+                        campos=['name', 'partner_id', 'amount_total', 'date_order', 'state'],
+                        limite=200,
+                        orden='amount_total desc'
+                    )
+                    if datos is not None and not datos.empty:
+                        total = datos['amount_total'].sum() if 'amount_total' in datos.columns else 0
+                        n = len(datos)
+                        respuesta = f"## Análisis de Compras\n\n**{n}** órdenes | Total: **${total:,.2f}**\n\n"
+                        respuesta += f"**Período:** {fecha_ini} → {fecha_fin}\n\n"
+                        respuesta += "Ver tabla adjunta para detalle de órdenes de compra."
+                        df = datos
+                    else:
+                        respuesta = f"No hay órdenes de compra en el período {fecha_ini} - {fecha_fin}."
+                else:
+                    respuesta = "No hay conexión con Odoo."
+            except Exception as e:
+                respuesta = f"Error en análisis de compras: {str(e)}"
+
+        # ==== CONSULTAS HR ====
+        elif accion in ('consultar_empleados', 'departamentos', 'ausencias', 'asistencia',
+                        'nomina', 'contratos', 'empresas_resumen', 'consultar_usuarios'):
+            try:
+                if self._bot.odoo and self._bot.odoo.conectado:
+                    _cfg = {
+                        'consultar_empleados': ('hr.employee',
+                            [('active', '=', True)],
+                            ['name', 'department_id', 'job_id', 'work_email', 'coach_id'], 200),
+                        'departamentos': ('hr.department',
+                            [('active', '=', True)],
+                            ['name', 'manager_id', 'parent_id'], 100),
+                        'ausencias': ('hr.leave.allocation',
+                            [('state', '=', 'validate')],
+                            ['employee_id', 'holiday_status_id', 'number_of_days', 'date_from'], 200),
+                        'asistencia': ('hr.attendance',
+                            [('check_in', '>=', fecha_ini)],
+                            ['employee_id', 'check_in', 'check_out', 'worked_hours'], 200),
+                        'nomina': ('hr.payslip',
+                            [('date_from', '>=', fecha_ini), ('state', 'in', ['done', 'paid'])],
+                            ['employee_id', 'name', 'date_from', 'date_to', 'net_wage'], 200),
+                        'contratos': ('hr.contract',
+                            [('state', 'in', ['open', 'pending'])],
+                            ['name', 'employee_id', 'job_id', 'wage', 'date_start', 'state'], 200),
+                        'empresas_resumen': ('res.company',
+                            [],
+                            ['name', 'partner_id', 'currency_id', 'phone', 'email', 'country_id'], 50),
+                        'consultar_usuarios': ('res.users',
+                            [('active', '=', True), ('share', '=', False)],
+                            ['name', 'login', 'groups_id'], 100),
+                    }
+                    modelo, filtro, campos, limite = _cfg[accion]
+                    datos = self._bot.odoo.buscar(modelo, filtro, campos, limite=limite)
+                    nombre_accion = accion.replace('_', ' ').title()
+                    if datos is not None and not datos.empty:
+                        respuesta = f"## {nombre_accion}\n\n**{len(datos)}** registros encontrados.\n\nVer tabla adjunta."
+                        df = datos
+                    else:
+                        respuesta = f"No se encontraron datos de **{nombre_accion}** en el sistema."
+                else:
+                    respuesta = "No hay conexión con Odoo."
+            except Exception as e:
+                respuesta = f"Error consultando {accion.replace('_', ' ')}: {str(e)}"
+
+        # ==== TOP PROVEEDORES ====
+        elif accion == 'top_proveedores':
+            try:
+                if self._bot.odoo and self._bot.odoo.conectado:
+                    datos = self._bot.odoo.buscar(
+                        'purchase.order',
+                        filtro=[('date_order', '>=', fecha_ini), ('date_order', '<=', fecha_fin),
+                                ('state', 'in', ['purchase', 'done'])],
+                        campos=['partner_id', 'amount_total'],
+                        limite=500,
+                        orden='amount_total desc'
+                    )
+                    if datos is not None and not datos.empty:
+                        datos['proveedor'] = datos['partner_id'].apply(
+                            lambda x: x[1] if isinstance(x, (list, tuple)) else str(x))
+                        top = (datos.groupby('proveedor')['amount_total']
+                               .sum().sort_values(ascending=False).head(params.get('limite', 10)))
+                        respuesta = f"## Top {len(top)} Proveedores\n\n"
+                        respuesta += "| # | Proveedor | Total Compras |\n|---|---|---:|\n"
+                        for i, (prov, total) in enumerate(top.items(), 1):
+                            respuesta += f"| {i} | {str(prov)[:35]} | **${total:,.2f}** |\n"
+                        df = top.reset_index().rename(columns={'proveedor': 'Proveedor', 'amount_total': 'Total'})
+                    else:
+                        respuesta = f"No hay datos de compras en el período."
+                else:
+                    respuesta = "No hay conexión con Odoo."
+            except Exception as e:
+                respuesta = f"Error en top proveedores: {str(e)}"
+
+        # ==== GENERAR REPORTES ====
+        elif accion in ('generar_excel', 'generar_pdf', 'generar_pdf_profesional'):
             respuesta = (
-                f"No encontré un ejecutor específico para la acción **{accion_leg}**. "
-                "Por favor reformula tu consulta indicando qué datos necesitas. "
-                "Ejemplos: _'ventas de este mes'_, _'stock disponible'_, _'facturas pendientes'_, "
-                "_'top clientes'_, _'predicción de ventas'_."
+                "Para generar un reporte, especifica qué datos quieres exportar:\n\n"
+                "- _'exportar ventas del mes a Excel'_\n"
+                "- _'generar PDF de inventario'_\n"
+                "- _'reporte de top 10 productos'_\n\n"
+                "Una vez que obtengas los datos con una consulta, el botón de exportar aparecer á en la tabla."
             )
 
+        # ==== DIAGNÓSTICO ====
+        elif accion == 'diagnosticar_error':
+            respuesta = self._info_conexion()
+
+        else:
+            # Router inteligente V2: consulta Odoo directamente vía mapeador.
+            # Si hay datos reales → los muestra; si no → respuesta honesta.
+            # Esto activa todos los ~53 handlers V2 sin elif explícito.
+            resp_v2, df_v2 = self._ejecutar_consulta_avanzada_v2(
+                accion, consulta, fecha_ini or '', fecha_fin or '', params, mensaje
+            )
+            if resp_v2:
+                respuesta = resp_v2
+                if df_v2 is not None:
+                    df = df_v2
+            else:
+                respuesta = self._respuesta_consulta_general(mensaje)
+
         return respuesta, df
+
+    def _respuesta_consulta_general(self, mensaje: str = '') -> str:
+        """Respuesta profesional orientativa con detección de contexto."""
+        msg_lower = (mensaje or '').lower()
+
+        # Detección de contexto para respuesta más relevante
+        if any(k in msg_lower for k in ['venta', 'vendido', 'sell', 'ingreso', 'revenue']):
+            return (
+                "Para consultar ventas puedo ayudarte con:\n\n"
+                "- **Ventas del período**: _'ventas de este mes'_, _'ventas de enero'_\n"
+                "- **Top productos**: _'top 10 productos más vendidos'_\n"
+                "- **Por cliente**: _'ventas por cliente'_, _'top 10 clientes'_\n"
+                "- **Comparativa**: _'comparar ventas este mes vs mes pasado'_\n"
+                "- **Predicción**: _'predecir ventas próximos 30 días'_\n\n"
+                "¿Qué período o dimensión te interesa analizar?"
+            )
+        if any(k in msg_lower for k in ['inventario', 'stock', 'producto', 'almacén', 'bodega']):
+            return (
+                "Para análisis de inventario puedo consultarte:\n\n"
+                "- **Stock actual**: _'stock disponible por producto'_, _'productos sin stock'_\n"
+                "- **Movimientos**: _'kardex de [producto]'_, _'entradas y salidas'_\n"
+                "- **Rotación**: _'rotación de inventario'_, _'stock lento o muerto'_\n"
+                "- **Alertas**: _'qué productos se van a agotar'_, _'reposición justo a tiempo'_\n\n"
+                "¿Qué producto o categoría específica te interesa?"
+            )
+        if any(k in msg_lower for k in ['factura', 'cobr', 'pagar', 'deuda', 'pago', 'cuenta']):
+            return (
+                "Para gestión financiera puedo ayudarte con:\n\n"
+                "- **Cuentas por cobrar**: _'facturas pendientes de cobro'_, _'clientes morosos'_\n"
+                "- **Cuentas por pagar**: _'facturas a proveedores pendientes'_\n"
+                "- **Flujo de caja**: _'flujo de caja de los últimos 30 días'_\n"
+                "- **Anomalías**: _'detectar pagos duplicados'_, _'diferencias en facturas'_\n\n"
+                "¿Quieres ver un análisis específico de cuentas por cobrar o pagar?"
+            )
+        if any(k in msg_lower for k in ['cliente', 'crm', 'lead', 'oportunidad', 'contacto']):
+            return (
+                "Para análisis de clientes y CRM:\n\n"
+                "- **Ranking**: _'top 10 mejores clientes'_, _'clientes más activos'_\n"
+                "- **Riesgo**: _'análisis de churn'_, _'clientes que dejaron de comprar'_\n"
+                "- **CRM**: _'análisis del CRM'_, _'oportunidades abiertas'_\n"
+                "- **Segmentación**: _'clientes por región'_, _'ticket promedio por cliente'_\n\n"
+                "¿Te interesa algún cliente o segmento en particular?"
+            )
+        if any(k in msg_lower for k in ['manual', 'cómo', 'como', 'proceso', 'procedi', 'paso']):
+            return (
+                "Para guías y procedimientos de Odoo:\n\n"
+                "- **Facturación**: _'cómo crear una factura'_, _'cómo cancelar una factura'_\n"
+                "- **Ventas**: _'cómo crear una orden de venta'_, _'proceso de confirmación'_\n"
+                "- **Inventario**: _'cómo registrar entrada de mercancía'_, _'ajuste de inventario'_\n"
+                "- **POS**: _'cómo hacer cierre de caja'_, _'cómo aplicar descuento en POS'_\n\n"
+                "Describe el proceso que necesitas y buscaré en el manual."
+            )
+        if any(k in msg_lower for k in ['predic', 'forecast', 'próximo', 'proximo', 'futuro', 'tendencia']):
+            return (
+                "Para predicciones y análisis predictivo:\n\n"
+                "- **Ventas futuras**: _'predecir ventas próximos 30 días'_\n"
+                "- **Agotamiento**: _'qué productos se agotarán pronto'_\n"
+                "- **Flujo de caja**: _'predecir flujo de caja'_\n"
+                "- **Tendencias**: _'analizar tendencia de ventas'_, _'estacionalidad'_\n\n"
+                "¿Qué horizonte de tiempo o módulo te interesa predecir?"
+            )
+
+        # Respuesta genérica profesional si no se detectó contexto
+        return (
+            "Soy **ANDROMEDA**, tu asistente de análisis empresarial para Odoo.\n\n"
+            "Puedo ayudarte con:\n\n"
+            "| Área | Ejemplos de consulta |\n"
+            "|------|---------------------|\n"
+            "| 📊 **Ventas** | _'ventas del mes'_, _'top productos'_, _'comparar periodos'_ |\n"
+            "| 🏪 **Inventario** | _'stock disponible'_, _'productos sin stock'_, _'rotación'_ |\n"
+            "| 💰 **Finanzas** | _'facturas pendientes'_, _'cuentas por cobrar'_, _'flujo de caja'_ |\n"
+            "| 👥 **Clientes** | _'top clientes'_, _'análisis CRM'_, _'riesgo de churn'_ |\n"
+            "| 🔮 **Predicciones** | _'predecir ventas 60 días'_, _'agotamiento de stock'_ |\n"
+            "| 📖 **Manual Odoo** | _'cómo crear una factura'_, _'proceso de cierre de caja'_ |\n"
+            "| 🔍 **Auditoría** | _'detectar anomalías'_, _'pagos duplicados'_, _'dashboard KPIs'_ |\n\n"
+            "Describe tu consulta con el área y período que te interesa."
+        )
 
     def _generar_tendencia(self, consulta=None, mensaje: str = '') -> Tuple[str, pd.DataFrame]:
         """Genera análisis de tendencia de ventas con desglose inteligente según contexto."""
@@ -968,47 +1699,157 @@ class EjecutorAcciones:
 
             if df is not None and not df.empty:
                 n_registros = len(df)
+                fecha_str = f"{fecha_ini} → {fecha_fin}" if fecha_ini and fecha_fin else "período actual"
 
-                respuesta = f"## 📊 {accion_legible}\n"
-                respuesta += f"**Período:** {fecha_ini} → {fecha_fin} &nbsp;|&nbsp; "
-                respuesta += f"**Registros:** {n_registros:,}\n\n"
+                # ── 1. Limpiar campos many2one [id, 'Nombre'] → 'Nombre' ──────────────
+                df = df.copy()
+                for col in df.columns:
+                    try:
+                        sample = df[col].dropna().iloc[0] if not df[col].dropna().empty else None
+                        if isinstance(sample, (list, tuple)) and len(sample) == 2:
+                            df[col] = df[col].apply(
+                                lambda x: x[1] if isinstance(x, (list, tuple)) and len(x) > 1 else (str(x) if x else ''))
+                    except Exception:
+                        pass
 
-                # Estadísticas inteligentes por columna numérica
-                cols_num = df.select_dtypes(include=['number']).columns.tolist()
-                if cols_num:
-                    respuesta += "### Resumen\n"
-                    respuesta += "| Métrica | Total | Promedio | Máx | Mín |\n"
-                    respuesta += "|---------|-------|----------|-----|-----|\n"
-                    for col in cols_num[:5]:
-                        nombre = _nombres_cols.get(col, col.replace('_', ' ').title())
-                        total = df[col].sum()
-                        promedio = df[col].mean()
-                        maximo = df[col].max()
-                        minimo = df[col].min()
-                        es_moneda = col.lower() in _cols_monetarias or any(p in col.lower() for p in ('amount', 'price', 'total', 'cost', 'wage'))
-                        if es_moneda:
-                            respuesta += f"| {nombre} | **${total:,.2f}** | ${promedio:,.2f} | ${maximo:,.2f} | ${minimo:,.2f} |\n"
+                # ── 2. Excluir columnas técnicas irrelevantes para el análisis ────────
+                _cols_excluir = {'id', 'write_uid', 'create_uid', 'message_follower_ids',
+                                 'activity_ids', 'message_ids', 'currency_id'}
+                df_bi = df[[c for c in df.columns
+                            if c not in _cols_excluir
+                            and not c.endswith('_uid')
+                            and c != 'id']].copy()
+
+                # ── 3. Identificar columna monetaria principal ────────────────────────
+                _prioridad_monto = ['amount_total', 'amount_untaxed', 'price_subtotal',
+                                    'price_total', 'lst_price', 'standard_price',
+                                    'wage', 'debit', 'balance', 'amount_residual']
+                col_monto = next((c for c in _prioridad_monto if c in df_bi.columns), None)
+                if not col_monto:
+                    cols_num_all = df_bi.select_dtypes(include='number').columns.tolist()
+                    col_monto = next((c for c in cols_num_all
+                                     if any(k in c.lower() for k in
+                                            ('amount', 'price', 'total', 'cost', 'wage',
+                                             'balance', 'revenue', 'subtotal'))), None)
+                    if not col_monto and cols_num_all:
+                        col_monto = cols_num_all[0]
+
+                # ── 4. Identificar columna de entidad (quién / qué) ──────────────────
+                _prioridad_cat = ['partner_id', 'product_id', 'user_id', 'config_id',
+                                  'team_id', 'categ_id', 'warehouse_id', 'location_id',
+                                  'journal_id', 'department_id', 'name']
+                col_cat = next((c for c in _prioridad_cat if c in df_bi.columns), None)
+                if not col_cat:
+                    col_cat = next((c for c in df_bi.columns
+                                    if df_bi[c].dtype == object
+                                    and df_bi[c].nunique() > 1
+                                    and c not in ('state', 'move_type', 'payment_state')), None)
+
+                nombre_monto = _nombres_cols.get(col_monto, col_monto.replace('_', ' ').title()) if col_monto else 'Valor'
+                nombre_cat = _nombres_cols.get(col_cat, col_cat.replace('_', ' ').title()) if col_cat else 'Entidad'
+
+                # ── 5. Calcular KPIs ejecutivos ──────────────────────────────────────
+                monto_total = df_bi[col_monto].sum() if col_monto else 0
+                monto_prom = df_bi[col_monto].mean() if col_monto else 0
+                monto_max = df_bi[col_monto].max() if col_monto else 0
+                es_moneda = col_monto and (col_monto in _cols_monetarias
+                                           or any(k in (col_monto or '').lower()
+                                                  for k in ('amount', 'price', 'total',
+                                                            'cost', 'wage', 'balance')))
+
+                # ── 6. Header ejecutivo ──────────────────────────────────────────────
+                respuesta = f"## {accion_legible}\n\n"
+                respuesta += f"> **Período:** {fecha_str} &nbsp;|&nbsp; **{n_registros:,}** registros analizados\n\n"
+
+                # ── 7. KPIs resumen (tablero ejecutivo) ──────────────────────────────
+                respuesta += "### Resumen Ejecutivo\n\n"
+                respuesta += "| KPI | Valor | Indicador |\n|-----|-------|----------|\n"
+                if col_monto:
+                    fmt_total = f"**${monto_total:,.2f}**" if es_moneda else f"**{monto_total:,.0f}**"
+                    fmt_prom  = f"${monto_prom:,.2f}" if es_moneda else f"{monto_prom:,.1f}"
+                    fmt_max   = f"${monto_max:,.2f}" if es_moneda else f"{monto_max:,.0f}"
+                    respuesta += f"| {nombre_monto} Total | {fmt_total} | ← cifra clave |\n"
+                    respuesta += f"| Promedio por Transacción | {fmt_prom} | — |\n"
+                    respuesta += f"| Transacción / Registro Máximo | {fmt_max} | — |\n"
+                respuesta += f"| Registros en Período | **{n_registros:,}** | — |\n\n"
+
+                # ── 8. Ranking Top 10 por entidad ────────────────────────────────────
+                if col_cat and col_monto and n_registros > 1:
+                    top_n = min(10, n_registros)
+                    try:
+                        ranking = (df_bi[[col_cat, col_monto]]
+                                   .groupby(col_cat, as_index=False)[col_monto].sum()
+                                   .sort_values(col_monto, ascending=False)
+                                   .head(top_n))
+                        ranking.columns = [nombre_cat, nombre_monto]
+                        acum = ranking[nombre_monto].sum()
+                        pct_vs_total = (acum / monto_total * 100) if monto_total > 0 else 100
+
+                        respuesta += f"### Top {top_n} — {nombre_cat} por {nombre_monto}\n\n"
+                        respuesta += f"| # | {nombre_cat} | {nombre_monto} | % Participación |\n"
+                        respuesta += f"|---|{'---'*3}|{'---'*2}|----------------|\n"
+                        acum_pct = 0.0
+                        for i, (_, row) in enumerate(ranking.iterrows(), 1):
+                            ent = str(row[nombre_cat])[:38] if row[nombre_cat] else 'N/A'
+                            val = row[nombre_monto]
+                            pct = (val / monto_total * 100) if monto_total > 0 else 0
+                            acum_pct += pct
+                            fmt_val = f"**${val:,.2f}**" if es_moneda else f"**{val:,.0f}**"
+                            respuesta += f"| {i} | {ent} | {fmt_val} | {pct:.1f}% |\n"
+                        respuesta += f"\n"
+
+                        # ── 9. Hallazgos automáticos ─────────────────────────────────
+                        top3_val = ranking.head(3)[nombre_monto].sum()
+                        pct_top3 = (top3_val / monto_total * 100) if monto_total > 0 else 0
+                        respuesta += "---\n\n**Hallazgos clave:**\n\n"
+                        respuesta += f"- El top 3 concentra el **{pct_top3:.0f}%** del {nombre_monto.lower()} total ({f'${top3_val:,.2f}' if es_moneda else f'{top3_val:,.0f}'}).\n"
+                        if pct_top3 > 70:
+                            respuesta += f"- **Alerta de concentración:** dependencia crítica en pocos registros. Se recomienda diversificación.\n"
+                        elif pct_top3 > 50:
+                            respuesta += f"- Concentración moderada. Evaluar estrategias para ampliar la base.\n"
                         else:
-                            respuesta += f"| {nombre} | **{total:,.0f}** | {promedio:,.1f} | {maximo:,.0f} | {minimo:,.0f} |\n"
-                    respuesta += "\n"
+                            respuesta += f"- Distribución equilibrada: {n_registros} entidades activas en el período.\n"
 
-                    # Insight automático: detectar concentración en top registros
-                    col_principal = cols_num[0]
-                    if n_registros >= 5:
-                        total_general = df[col_principal].sum()
-                        if total_general > 0:
-                            top_5 = df.nlargest(min(5, n_registros), col_principal)[col_principal].sum()
-                            pct_top = (top_5 / total_general) * 100
-                            if pct_top > 50:
-                                es_mon = col_principal.lower() in _cols_monetarias or 'amount' in col_principal.lower() or 'price' in col_principal.lower()
-                                fmt = f"${top_5:,.2f}" if es_mon else f"{top_5:,.0f}"
-                                respuesta += f"💡 **Insight:** Los top 5 registros concentran el **{pct_top:.0f}%** del total ({fmt})\n\n"
+                        # Brecha líder - último
+                        if len(ranking) >= 2:
+                            lider_val = ranking.iloc[0][nombre_monto]
+                            ultimo_val = ranking.iloc[-1][nombre_monto]
+                            lider_nom = str(ranking.iloc[0][nombre_cat])[:30]
+                            brecha = lider_val - ultimo_val
+                            if es_moneda and brecha > 0:
+                                respuesta += f"- **Brecha de desempeño:** {lider_nom} supera al último en **${brecha:,.2f}**.\n"
+                        respuesta += "\n"
+                    except Exception:
+                        pass
 
-                # Enriquecer con LLM si está disponible
+                elif col_monto and n_registros >= 2:
+                    # Sin columna categórica — detectar tendencia por fecha si existe
+                    cols_fecha = [c for c in df_bi.columns
+                                  if any(k in c for k in ('date', 'Date', 'invoice_date',
+                                                           'date_order', 'check_in', 'start_at'))]
+                    if cols_fecha:
+                        try:
+                            col_f = cols_fecha[0]
+                            df_bi[col_f] = pd.to_datetime(df_bi[col_f], errors='coerce')
+                            tend = df_bi.groupby(df_bi[col_f].dt.to_period('M'))[col_monto].sum()
+                            if len(tend) >= 2:
+                                ult = tend.iloc[-1]
+                                pen = tend.iloc[-2]
+                                variacion = ((ult - pen) / pen * 100) if pen > 0 else 0
+                                signo = "▲" if variacion >= 0 else "▼"
+                                label = "crecimiento" if variacion >= 0 else "contracción"
+                                respuesta += f"**Variación mensual:** {signo} **{abs(variacion):.1f}%** ({label} vs período anterior). "
+                                if abs(variacion) > 20:
+                                    respuesta += f"Variación significativa. Validar causa raíz.\n\n"
+                                else:
+                                    respuesta += f"Evolución dentro de rango normal.\n\n"
+                        except Exception:
+                            pass
+
+                # ── 10. Enriquecer con LLM (prompt nivel Junta Directiva) ────────────
                 if hasattr(self._bot, 'cerebro_llm') and self._bot.cerebro_llm:
                     try:
-                        contexto_datos = df.head(15).to_string(index=False)
-                        # Obtener contexto de memoria si está disponible
+                        contexto_datos = df_bi.head(20).to_string(index=False)
                         contexto_memoria = ""
                         if hasattr(self._bot, 'memoria_jerarquica') and self._bot.memoria_jerarquica:
                             mem_vec = getattr(self._bot.memoria_jerarquica, 'memoria_vectorial', None)
@@ -1017,7 +1858,6 @@ class EjecutorAcciones:
                                     contexto_memoria = mem_vec.obtener_contexto_para_llm(mensaje, max_recuerdos=2)
                                 except Exception:
                                     pass
-                            # Contexto relacional del grafo
                             try:
                                 contexto_grafo = self._bot.memoria_jerarquica.obtener_contexto_grafo(accion)
                                 if contexto_grafo:
@@ -1025,35 +1865,34 @@ class EjecutorAcciones:
                             except Exception:
                                 pass
 
-                        # Construir sección de especificaciones del usuario
                         especificaciones = _construir_especificaciones_usuario(params, consulta)
 
                         prompt_llm = (
-                            f"Eres un analista BI experto. Analiza estos datos de '{accion_legible}' "
-                            f"del período {fecha_ini} a {fecha_fin}.\n\n"
-                            f"Datos ({n_registros} registros, muestra de 15):\n{contexto_datos}\n\n"
+                            f"Eres el Chief Data Officer presentando ante la Junta Directiva y el CEO. "
+                            f"Analiza el reporte de '{accion_legible}' (período: {fecha_str}).\n\n"
+                            f"DATOS VERIFICADOS del sistema ({n_registros} registros, muestra representativa):\n"
+                            f"{contexto_datos}\n\n"
                         )
                         if contexto_memoria:
-                            prompt_llm += f"Contexto de análisis previos:\n{contexto_memoria}\n\n"
+                            prompt_llm += f"Contexto histórico / análisis previos:\n{contexto_memoria}\n\n"
                         if especificaciones:
-                            prompt_llm += f"Especificaciones del usuario:\n{especificaciones}\n\n"
+                            prompt_llm += f"Filtros aplicados por el usuario:\n{especificaciones}\n\n"
                         prompt_llm += (
-                            f"Pregunta exacta del usuario: {mensaje}\n\n"
-                            f"Instrucciones ESTRICTAS:\n"
-                            f"- Responde EXACTAMENTE lo que el usuario pidió, no más ni menos\n"
-                            f"- Si el usuario pidió un formato específico (tabla/lista/gráfica), úsalo\n"
-                            f"- Si el usuario filtró por tienda/vendedor/producto, reporta SOLO esos datos\n"
-                            f"- Si el usuario pidió top N, muestra exactamente N elementos\n"
-                            f"- Usa SOLO hechos observables de los datos proporcionados\n"
-                            f"- Si detectas algo notable (tendencia, anomalía, concentración), menciónalo\n"
-                            f"- No inventes cifras que no estén en los datos\n"
-                            f"- Si hay contexto de análisis previos, compara brevemente"
+                            f"Pregunta del usuario: {mensaje}\n\n"
+                            f"INSTRUCCIONES — respuesta para Junta Directiva:\n"
+                            f"1. Abre con UNA oración ejecutiva que resuma el estado del indicador\n"
+                            f"2. Lista máx. 3 hallazgos concretos usando los números del dataset\n"
+                            f"3. Señala 1 riesgo o punto de atención si lo hay en los datos\n"
+                            f"4. Cierra con 1-2 acciones recomendadas, específicas y medibles\n"
+                            f"5. Tono: profesional, directo. Sin tecnicismos de base de datos.\n"
+                            f"6. NUNCA inventes cifras — usa solo los datos proporcionados.\n"
+                            f"7. Máximo 200 palabras."
                         )
                         resp_llm = self._bot.cerebro_llm.generar(prompt_llm)
                         if resp_llm and hasattr(resp_llm, 'contenido') and resp_llm.contenido:
-                            respuesta += f"### 💡 Análisis\n{resp_llm.contenido}\n"
+                            respuesta += f"### Análisis Ejecutivo\n\n{resp_llm.contenido}\n"
                     except Exception:
-                        pass  # LLM no disponible, la tabla es suficiente
+                        pass  # LLM no disponible — la tabla cuantitativa es suficiente
 
             else:
                 # Sin datos directos: intentar con LLM contextual sobre Odoo

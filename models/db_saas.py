@@ -243,6 +243,7 @@ def _obtener_db_url() -> str:
     """
     Resuelve la URL de base de datos.
     Prioridad: DB_URL en .env → SQLite local en data/.
+    Usa forward slashes en el path para compatibilidad cross-platform con SQLAlchemy.
     """
     url = os.getenv("DB_URL", "")
     if not url:
@@ -250,7 +251,8 @@ def _obtener_db_url() -> str:
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
         )
         os.makedirs(data_dir, exist_ok=True)
-        url = f"sqlite:///{os.path.join(data_dir, 'andromeda_saas.db')}"
+        db_file = os.path.join(data_dir, "andromeda_saas.db").replace("\\", "/")
+        url = f"sqlite:///{db_file}"
     return url
 
 
@@ -259,18 +261,38 @@ def inicializar_db() -> None:
     Crea las tablas si no existen y prepara la fábrica de sesiones.
     Thread-safe. Idempotente: llamar múltiples veces es seguro.
     Debe invocarse al arrancar la aplicación (evento startup de FastAPI).
+
+    Robusto ante fallos transitorios (DB bloqueada durante reload de uvicorn):
+    el engine global solo se asigna DESPUÉS de que create_all() tenga éxito.
+    Si falla, _engine queda None y el siguiente llamador lo reintentará.
     """
     global _engine, _SessionFactory
     if _engine is None:
         with _init_lock:
             if _engine is None:
                 db_url = _obtener_db_url()
-                connect_args = {"check_same_thread": False} if "sqlite" in db_url else {}
-                _engine = create_engine(db_url, connect_args=connect_args, echo=False)
-                _SessionFactory = sessionmaker(
-                    bind=_engine, autoflush=False, autocommit=False
+                is_sqlite = "sqlite" in db_url
+                connect_args = {"check_same_thread": False} if is_sqlite else {}
+                # Crear engine local primero; solo promover a global si todo va bien
+                _eng_tmp = create_engine(
+                    db_url,
+                    connect_args=connect_args,
+                    pool_pre_ping=True,
+                    echo=False,
                 )
-                Base.metadata.create_all(_engine)
+                _sf_tmp = sessionmaker(
+                    bind=_eng_tmp, autoflush=False, autocommit=False
+                )
+                Base.metadata.create_all(_eng_tmp)
+                if is_sqlite:
+                    # WAL mode: mejor concurrencia con múltiples procesos/workers
+                    from sqlalchemy import text as _text
+                    with _eng_tmp.connect() as _conn:
+                        _conn.execute(_text("PRAGMA journal_mode=WAL"))
+                        _conn.execute(_text("PRAGMA synchronous=NORMAL"))
+                # Promocionar a globales solo tras éxito completo
+                _engine = _eng_tmp
+                _SessionFactory = _sf_tmp
                 logger.info("BD SaaS inicializada: %s", db_url.split("///")[-1])
 
 

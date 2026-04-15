@@ -1,47 +1,108 @@
 interface ChatBubbleProps {
   role: "user" | "assistant";
   content: string;
+  /** HTML extra: tabla de datos o gráfica generada por el backend (tabla_html). */
+  tablaHtml?: string;
 }
 
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-// ── Separa el contenido en partes: texto markdown e iframes de Plotly ────────
-type ContentPart = { type: "markdown"; text: string } | { type: "iframe"; src: string; height: string };
+// ── Tipos de bloque de contenido ─────────────────────────────────────────────
+type ContentPart =
+  | { type: "markdown"; text: string }
+  | { type: "iframe"; src: string; height: string }
+  | { type: "html"; html: string };
 
+/**
+ * Separa el contenido en bloques:
+ *  - texto Markdown normal
+ *  - <iframe src="..."> → gráfica externa
+ *  - <andromeda-chart>...</andromeda-chart> → documento Plotly completo (iframe srcDoc)
+ *  - <div ...> / <img src="data:..."> / <table> → HTML embebido
+ */
 function splitContent(raw: string): ContentPart[] {
   const parts: ContentPart[] = [];
-  const re = /<iframe([^>]*)>[\s\S]*?<\/iframe>/gi;
+
+  // andromeda-chart se detecta PRIMERO (tiene contenido interno extenso)
+  const re = /(<andromeda-chart>[\s\S]*?<\/andromeda-chart>|<iframe[^>]*>[\s\S]*?<\/iframe>|<div[\s\S]*?<\/div>|<img\s+src="data:[^"]+"\s*\/>|<table[\s\S]*?<\/table>)/gi;
   let last = 0;
   let m: RegExpExecArray | null;
 
   while ((m = re.exec(raw)) !== null) {
     if (m.index > last) {
-      parts.push({ type: "markdown", text: raw.slice(last, m.index) });
+      const txt = raw.slice(last, m.index);
+      if (txt.trim()) parts.push({ type: "markdown", text: txt });
     }
-    const attrs = m[1];
-    const srcMatch = /src="([^"]+)"/.exec(attrs);
-    const heightMatch = /height="([^"]+)"/.exec(attrs);
-    if (srcMatch) {
-      parts.push({
-        type: "iframe",
-        src: srcMatch[1],
-        height: heightMatch ? heightMatch[1] : "620",
-      });
+
+    const block = m[1];
+
+    // andromeda-chart → bloque Plotly completo
+    if (/^<andromeda-chart/i.test(block)) {
+      parts.push({ type: "html", html: block });
+    // iframe con src → renderizar como iframe
+    } else if (/^<iframe/i.test(block)) {
+      const srcMatch = /src="([^"]+)"/.exec(block);
+      const heightMatch = /height="([^"]+)"/.exec(block);
+      if (srcMatch) {
+        parts.push({ type: "iframe", src: srcMatch[1], height: heightMatch?.[1] ?? "620" });
+      } else {
+        parts.push({ type: "html", html: block });
+      }
+    } else {
+      // div, img data-uri, table → HTML embebido
+      parts.push({ type: "html", html: block });
     }
+
     last = m.index + m[0].length;
   }
 
   if (last < raw.length) {
-    parts.push({ type: "markdown", text: raw.slice(last) });
+    const txt = raw.slice(last);
+    if (txt.trim()) parts.push({ type: "markdown", text: txt });
   }
+
   return parts;
+}
+/**
+ * Renderiza un bloque HTML con lógica de seguridad:
+ *  - Si contiene <andromeda-chart> (Plotly completo) → <iframe srcDoc> (los scripts SÍ ejecutan)
+ *  - Si no → dangerouslySetInnerHTML (imágenes base64, tablas simples, sin scripts)
+ */
+function renderHtmlPart(html: string, key: number): React.ReactElement {
+  const plotlyMatch = /^<andromeda-chart>([\s\S]*)<\/andromeda-chart>$/i.exec(html.trim());
+  if (plotlyMatch) {
+    return (
+      <div
+        key={key}
+        className="my-3 rounded-xl overflow-hidden andromeda-chart"
+        style={{ border: "1px solid rgba(102,126,234,0.3)", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}
+      >
+        <iframe
+          srcDoc={plotlyMatch[1]}
+          style={{ width: "100%", height: "500px", border: "none", display: "block", borderRadius: "inherit" }}
+          title={`Gráfica ${key}`}
+          sandbox="allow-scripts"
+        />
+      </div>
+    );
+  }
+  // HTML sin scripts: tablas, imágenes base64
+  return (
+    <div
+      key={key}
+      className="my-3 rounded-xl overflow-x-auto andromeda-chart"
+      style={{ border: "1px solid rgba(102,126,234,0.3)", padding: "8px", background: "rgba(0,0,0,0.25)" }}
+      // eslint-disable-next-line react/no-danger
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
-export default function ChatBubble({ role, content }: Readonly<ChatBubbleProps>) {
+export default function ChatBubble({ role, content, tablaHtml }: Readonly<ChatBubbleProps>) {
   const isUser = role === "user";
   const parts = isUser ? null : splitContent(content);
 
@@ -80,24 +141,28 @@ export default function ChatBubble({ role, content }: Readonly<ChatBubbleProps>)
         {isUser ? (
           content
         ) : (
-          parts!.map((part, i) =>
-            part.type === "iframe" ? (
-              <div
-                key={i}
-                className="my-3 rounded-xl overflow-hidden"
-                style={{ border: "1px solid rgba(102,126,234,0.3)", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}
-              >
-                <iframe
-                  src={part.src}
-                  width="100%"
-                  height={`${part.height}px`}
-                  frameBorder="0"
-                  title={`Gráfica ${i}`}
-                  style={{ display: "block", borderRadius: "inherit" }}
-                />
-              </div>
-            ) : (
-              <ReactMarkdown
+          <>
+            {parts!.map((part, i) =>
+              part.type === "iframe" ? (
+                <div
+                  key={i}
+                  className="my-3 rounded-xl overflow-hidden"
+                  style={{ border: "1px solid rgba(102,126,234,0.3)", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}
+                >
+                  <iframe
+                    src={part.src}
+                    width="100%"
+                    height={`${part.height}px`}
+                    frameBorder="0"
+                    title={`Gráfica ${i}`}
+                    style={{ display: "block", borderRadius: "inherit" }}
+                  />
+                </div>
+              ) : part.type === "html" ? (
+                /* HTML embebido: gráfica Plotly (andromeda-chart → iframe) o Matplotlib base64 */
+                renderHtmlPart(part.html, i)
+              ) : (
+                <ReactMarkdown
                 key={i}
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -162,7 +227,10 @@ export default function ChatBubble({ role, content }: Readonly<ChatBubbleProps>)
                 {part.text}
               </ReactMarkdown>
             )
-          )
+          )}
+            {/* Panel de tabla/gráfica extra proveniente de tabla_html del backend */}
+            {tablaHtml && renderHtmlPart(tablaHtml, -1)}
+          </>
         )}
       </div>
 

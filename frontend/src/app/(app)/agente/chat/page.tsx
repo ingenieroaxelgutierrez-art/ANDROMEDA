@@ -5,15 +5,40 @@ import Image from "next/image";
 import { enviarMensaje, getMe, ApiError, MensajeChat } from "@/lib/api";
 import ChatBubble from "@/components/ChatBubble";
 
+const AGENTE_SESSION_KEY = "andromeda_agente_session_id";
+const AGENTE_HISTORY_KEY = "andromeda_agente_history";
+
 export default function AgenteChatPage() {
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState<string>(() => {
+    if (typeof window === "undefined") return crypto.randomUUID();
+    const stored = sessionStorage.getItem(AGENTE_SESSION_KEY);
+    if (stored) return stored;
+    const id = crypto.randomUUID();
+    sessionStorage.setItem(AGENTE_SESSION_KEY, id);
+    return id;
+  });
   const [empresaId, setEmpresaId]   = useState<string | null>(null);
   const [nombreEmpresa, setNombreEmpresa] = useState<string>("");
-  const [mensajes, setMensajes]     = useState<MensajeChat[]>([]);
+  const [mensajes, setMensajes]     = useState<MensajeChat[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = sessionStorage.getItem(AGENTE_HISTORY_KEY);
+      return raw ? (JSON.parse(raw) as MensajeChat[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const bottomRef                   = useRef<HTMLDivElement>(null);
+
+  // Persistir historial en sessionStorage cuando cambia
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(AGENTE_HISTORY_KEY, JSON.stringify(mensajes));
+    }
+  }, [mensajes]);
 
   useEffect(() => {
     getMe()
@@ -40,7 +65,7 @@ export default function AgenteChatPage() {
     setError(null);
 
     try {
-      const resp = await enviarMensaje(texto, sessionId, empresaId);
+      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined);
       setMensajes(resp.historial);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error al enviar el mensaje.");

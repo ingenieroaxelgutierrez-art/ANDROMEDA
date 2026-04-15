@@ -67,7 +67,7 @@ def _nueva_empresa() -> str:
 
 def _nuevo_usuario(
     empresa_id: str,
-    rol: str = "operador",
+    rol: str = "agente",
     password: str = "Password123!",
     activo: bool = True,
 ) -> tuple[str, str]:
@@ -99,8 +99,8 @@ def empresa_id() -> str:
 
 @pytest.fixture()
 def operador(empresa_id: str) -> tuple[str, str]:
-    """Retorna (usuario_id, email) de un usuario con rol operador."""
-    return _nuevo_usuario(empresa_id, rol="operador")
+    """Retorna (usuario_id, email) de un usuario con rol agente."""
+    return _nuevo_usuario(empresa_id, rol="agente")
 
 
 @pytest.fixture()
@@ -163,7 +163,7 @@ class TestJwtUtils:
 
     def test_access_token_rechazado_como_refresh(self):
         from app.api.auth.jwt_utils import crear_access_token, decodificar_refresh_token
-        token = crear_access_token("x", "x@x.com", "operador", "e1")
+        token = crear_access_token("x", "x@x.com", "agente", "e1")
         assert decodificar_refresh_token(token) is None
 
     def test_refresh_token_rechazado_como_access(self):
@@ -184,7 +184,7 @@ class TestJwtUtils:
         import app.api.auth.jwt_utils as ju
         # Parchear temporalmente duración a 0 minutos (token ya expirado)
         with patch.object(ju, "ACCESS_TOKEN_EXPIRE_MINUTES", -1):
-            token = ju.crear_access_token("uid", "e@e.com", "viewer", "eid")
+            token = ju.crear_access_token("uid", "e@e.com", "usuario", "eid")
         assert decodificar_access_token(token) is None
 
     def test_refresh_token_expirado_retorna_none(self):
@@ -267,7 +267,7 @@ class TestPasswordModel:
                 nombre="NoPass",
                 email=f"nopass_{uuid.uuid4().hex[:4]}@test.com",
                 empresa_id=empresa_id,
-                rol="viewer",
+                rol="usuario",
             )
             # No llamar set_password → password_hash = None
             s.add(u)
@@ -316,7 +316,7 @@ class TestLogin:
         payload = decodificar_access_token(token)
         assert payload is not None
         assert payload["email"] == email
-        assert payload["rol"] == "operador"
+        assert payload["rol"] == "agente"
 
     def test_login_password_incorrecta_401(self, api_client, empresa_id, operador):
         _, email = operador
@@ -366,7 +366,7 @@ class TestRefresh:
         assert r.status_code == 200
 
     def test_refresh_emite_nuevo_access_token(self, api_client, empresa_id, operador):
-        _, email = operador
+        uid, email = operador
         tokens = _login(api_client, email).json()
         r = api_client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
         data = r.json()
@@ -453,7 +453,7 @@ class TestMe:
         )
         data = r.json()
         assert data["email"] == email
-        assert data["rol"] == "operador"
+        assert data["rol"] == "agente"
         assert data["empresa_id"] == empresa_id
         assert data["activo"] is True
 
@@ -498,7 +498,7 @@ class TestCrearUsuario:
         return _login(client, email).json()["access_token"]
 
     def _token_operador(self, client, empresa_id: str) -> str:
-        _, email = _nuevo_usuario(empresa_id, rol="operador")
+        _, email = _nuevo_usuario(empresa_id, rol="agente")
         return _login(client, email).json()["access_token"]
 
     def test_crear_usuario_admin_201(self, api_client, empresa_id):
@@ -511,7 +511,7 @@ class TestCrearUsuario:
                 "email": f"nuevo_{uuid.uuid4().hex[:6]}@corp.com",
                 "password": _PASS_VALIDO,
                 "empresa_id": empresa_id,
-                "rol": "operador",
+                "rol": "agente",
             },
         )
         assert r.status_code == 201
@@ -527,12 +527,12 @@ class TestCrearUsuario:
                 "email": email,
                 "password": _PASS_VALIDO,
                 "empresa_id": empresa_id,
-                "rol": "viewer",
+                "rol": "usuario",
             },
         )
         data = r.json()
         assert data["email"] == email
-        assert data["rol"] == "viewer"
+        assert data["rol"] == "usuario"
         assert "password_hash" not in data
 
     def test_crear_usuario_operador_403(self, api_client, empresa_id):
@@ -546,7 +546,7 @@ class TestCrearUsuario:
                 "email": f"x_{uuid.uuid4().hex[:6]}@x.com",
                 "password": _PASS_VALIDO,
                 "empresa_id": empresa_id,
-                "rol": "viewer",
+                "rol": "usuario",
             },
         )
         assert r.status_code == 403
@@ -559,7 +559,7 @@ class TestCrearUsuario:
                 "email": "ghost@x.com",
                 "password": _PASS_VALIDO,
                 "empresa_id": empresa_id,
-                "rol": "viewer",
+                "rol": "usuario",
             },
         )
         assert r.status_code == 401
@@ -571,7 +571,7 @@ class TestCrearUsuario:
             "email": f"dup_{uuid.uuid4().hex[:6]}@dup.com",
             "password": _PASS_VALIDO,
             "empresa_id": empresa_id,
-            "rol": "operador",
+            "rol": "agente",
         }
         api_client.post(
             "/auth/usuarios",
@@ -596,7 +596,7 @@ class TestCrearUsuario:
                 "email": f"huerfano_{uuid.uuid4().hex[:6]}@x.com",
                 "password": _PASS_VALIDO,
                 "empresa_id": str(uuid.uuid4()),  # ID que no existe
-                "rol": "operador",
+                "rol": "agente",
             },
         )
         assert r.status_code == 404
@@ -626,7 +626,7 @@ class TestCrearUsuario:
                 "email": "short@x.com",
                 "password": _PASS_CORTA,  # menos de 8 caracteres
                 "empresa_id": empresa_id,
-                "rol": "viewer",
+                "rol": "usuario",
             },
         )
         assert r.status_code == 422

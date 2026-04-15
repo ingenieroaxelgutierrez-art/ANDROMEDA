@@ -131,11 +131,20 @@ class OllamaIntegrador:
     
     def analizar_intencion(self, prompt: str) -> Dict[str, Any]:
         """
-        Analiza el prompt para detectar intención.
-        
+        [SOLO USO DIAGNÓSTICO / CLI] Clasifica la intención del prompt usando el LLM.
+
+        ADVERTENCIA: Este método NO debe usarse en el pipeline principal de mensajes.
+        La clasificación de intención pertenece a MotorNLPAvanzado + MotorEmbeddings,
+        que calculan confianza real mediante similitud coseno.
+        El LLM genera el número de confianza estadísticamente (no lo mide), lo que
+        puede contaminar el routing y degradar las respuestas.
+
+        Uso válido: cli_monitor.py para diagnóstico, herramientas de inspección.
+        Uso correcto en pipeline: Ollama entra SOLO en generación de respuesta final.
+
         Args:
             prompt: Texto del usuario
-        
+
         Returns:
             Dict con intención, confianza y análisis
         """
@@ -151,24 +160,28 @@ class OllamaIntegrador:
             }
         
         try:
-            prompt_analisis = f"""Eres un clasificador de intención para ANDROMEDA.
+            prompt_analisis = f"""Eres un clasificador de intención para ANDROMEDA. Analiza el mensaje del usuario y devuelve SOLO un JSON válido, sin texto adicional ni markdown.
 
-Devuelve SOLO un JSON válido (sin markdown ni texto extra) con este esquema exacto:
+Intenciones posibles (elige UNA): ventas, inventario, clientes, productos, pos, reporte, resumen, comparar, describir, consultar_manual, ayuda, saludo, consulta_general, diagnosticar_error, auditoria_nocturna, semaforo_salud, detectar_pagos_fantasma, analizar_churn, reposicion_jit, stock_lento, clientes_olvidados, diferencias_centavos, generar_reporte_auditoria
+
+Acciones posibles (elige UNA): consulta_general, consultar_ventas, consultar_inventario, consultar_clientes, consultar_productos, consultar_pos, diagnosticar_error, auditoria_nocturna, semaforo_salud, detectar_pagos_fantasma, analizar_churn, reposicion_jit, stock_lento, clientes_olvidados, diferencias_centavos, generar_reporte_auditoria, consultar_manual
+
+Formato de respuesta (rellena SOLO los valores, no copies las opciones):
 {{
-  "intencion": "ventas|inventario|clientes|productos|pos|reporte|resumen|comparar|describir|consultar_manual|ayuda|saludo|consulta_general|diagnosticar_error|auditoria_nocturna|semaforo_salud|detectar_pagos_fantasma|analizar_churn|reposicion_jit|stock_lento|clientes_olvidados|diferencias_centavos|generar_reporte_auditoria",
-  "accion_sugerida": "consulta_general|consultar_ventas|consultar_inventario|consultar_clientes|consultar_productos|consultar_pos|diagnosticar_error|auditoria_nocturna|semaforo_salud|detectar_pagos_fantasma|analizar_churn|reposicion_jit|stock_lento|clientes_olvidados|diferencias_centavos|generar_reporte_auditoria|consultar_manual",
-  "parametros_sugeridos": {{"periodo": "hoy|semana|mes|rango", "limite": 10}},
-  "confianza": 0.0,
-  "palabras_clave": ["..."],
-  "contexto": "...",
-  "mejora_sugerida": "..."
+  "intencion": "<una intencion de la lista>",
+  "accion_sugerida": "<una accion de la lista>",
+  "parametros_sugeridos": {{"periodo": "<hoy|semana|mes|rango>", "limite": 10}},
+  "confianza": 0.85,
+  "palabras_clave": ["palabra1", "palabra2"],
+  "contexto": "<breve resumen>",
+  "mejora_sugerida": ""
 }}
 
 Reglas:
-- Si no estás seguro, usa "consulta_general" y confianza <= 0.55.
-- No inventes campos fuera del esquema.
+- Si no estás seguro, usa "consulta_general" y confianza menor o igual a 0.55.
+- Solo devuelve el JSON. Nada más.
 
-PROMPT_USUARIO: {prompt}"""
+Mensaje del usuario: {prompt}"""
             
             inicio = time.time()
             respuesta = self._llamar_ollama(prompt_analisis, temperatura=0.15)

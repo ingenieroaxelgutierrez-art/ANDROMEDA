@@ -186,13 +186,27 @@ class MemoriaVectorial:
     
     def _generar_embedding(self, texto: str) -> Optional[List[float]]:
         """Genera embedding para un texto"""
-        if self.modelo_embeddings:
-            try:
-                embedding = self.modelo_embeddings.encode(texto, convert_to_numpy=True)
-                return embedding.tolist()
-            except Exception as e:
-                logger.error(f"Error generando embedding: {e}")
-        return None
+        if self.modelo_embeddings is None:
+            return None
+        try:
+            embedding = self.modelo_embeddings.encode(texto, convert_to_numpy=True)
+            result = embedding.tolist()
+            # Validar que el resultado es una lista real de números.
+            # Se usa float() para aceptar tanto Python float como numpy.float32/float64
+            # y rechazar MagicMock/None/strings de contaminación de tests.
+            if isinstance(result, list) and len(result) > 0:
+                try:
+                    float(result[0])   # Lanza TypeError/ValueError si no es numérico
+                    return result
+                except (TypeError, ValueError):
+                    pass
+            # Resultado inválido (p.ej. MagicMock de tests) — desactivar modelo
+            logger.warning("Embedding retornó tipo inválido, desactivando modelo de embeddings")
+            self.modelo_embeddings = None
+            return None
+        except Exception as e:
+            logger.error(f"Error generando embedding: {e}")
+            return None
     
     # =========================================================================
     # CONTROL DE CRECIMIENTO

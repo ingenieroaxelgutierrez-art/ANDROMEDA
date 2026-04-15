@@ -792,103 +792,144 @@ class Formateador360:
     
     @staticmethod
     def formatear(analisis: Analisis360) -> str:
-        """Formatea un análisis 360° completo."""
+        """Formatea un análisis 360° completo en estilo ejecutivo para Junta Directiva."""
         entidad = analisis.entidad
-        
-        md = f"""## Análisis 360° - {entidad.nombre}
+        ventas    = analisis.ventas    or {}
+        inventario = analisis.inventario or {}
+        compras   = analisis.compras   or {}
 
-**Tipo:** {entidad.tipo.value.capitalize()} | **Confianza:** {entidad.confianza:.0%}
+        # ── Health Score ─────────────────────────────────────────────────────────
+        total_prods = inventario.get('total_productos', 0)
+        sin_stock   = inventario.get('productos_sin_stock', 0)
+        stock_pct   = ((total_prods - sin_stock) / total_prods * 100) if total_prods > 0 else 100
+        alertas     = analisis.alertas or []
+        n_alertas   = len(alertas)
+        if n_alertas == 0 and stock_pct >= 90:
+            estado_icon, estado_label = "🟢", "SALUDABLE"
+        elif n_alertas <= 2 and stock_pct >= 70:
+            estado_icon, estado_label = "🟡", "ATENCIÓN REQUERIDA"
+        else:
+            estado_icon, estado_label = "🔴", "ACCIÓN INMEDIATA"
 
----
+        # ── KPIs principales ─────────────────────────────────────────────────────
+        total_ventas_90 = ventas.get('total_90_dias', 0)
+        unidades_vend   = ventas.get('unidades_vendidas', 0)
+        num_ordenes     = ventas.get('num_ordenes', 0)
+        ticket_prom     = ventas.get('ticket_promedio', (total_ventas_90 / max(num_ordenes, 1)) if num_ordenes else 0)
+        valor_inv       = inventario.get('valor_estimado', 0)
+        total_compras   = compras.get('total_90_dias', 0) if not compras.get('mensaje') else 0
+        margen_bruto    = ((total_ventas_90 - total_compras) / total_ventas_90 * 100) if total_ventas_90 > 0 and total_compras > 0 else None
 
-"""
-        
-        # Alertas primero
-        if analisis.alertas:
-            md += "### Alertas\n"
-            for alerta in analisis.alertas:
-                md += f"- {alerta}\n"
+        md = f"## Análisis 360° — {entidad.nombre}\n\n"
+        md += f"> {estado_icon} **Estado:** {estado_label} &nbsp;|&nbsp; "
+        md += f"**Categoría:** {entidad.tipo.value.title()} &nbsp;|&nbsp; "
+        md += f"**Confianza del análisis:** {entidad.confianza:.0%}\n\n"
+        md += "---\n\n"
+
+        # ── Tablero ejecutivo ────────────────────────────────────────────────────
+        md += "### Tablero de Mando (Últimos 90 días)\n\n"
+        md += "| Indicador Clave | Valor | Evaluación |\n|-----------------|-------|------------|\n"
+        if total_ventas_90 > 0:
+            eval_v = "Alto" if total_ventas_90 > 500_000 else ("Medio" if total_ventas_90 > 100_000 else "Bajo")
+            md += f"| **Ingresos Totales** | **${total_ventas_90:,.2f}** | {eval_v} desempeño |\n"
+        if ticket_prom > 0:
+            eval_t = "Óptimo" if ticket_prom > 1_000 else ("Aceptable" if ticket_prom > 300 else "Mejorable")
+            md += f"| Ticket Promedio | **${ticket_prom:,.2f}** | {eval_t} |\n"
+        if num_ordenes > 0:
+            md += f"| Número de Órdenes | **{num_ordenes:,}** | — |\n"
+        if unidades_vend > 0:
+            md += f"| Unidades Vendidas | **{unidades_vend:,.0f}** | — |\n"
+        if total_prods > 0:
+            eval_s = "Óptimo" if stock_pct >= 95 else ("Atención" if stock_pct >= 80 else "Crítico")
+            md += f"| Disponibilidad de Stock | **{stock_pct:.0f}%** ({total_prods - sin_stock}/{total_prods}) | {eval_s} |\n"
+        if valor_inv > 0:
+            md += f"| Valor en Inventario | **${valor_inv:,.2f}** | — |\n"
+        if margen_bruto is not None:
+            eval_m = "Saludable" if margen_bruto > 40 else ("Revisar" if margen_bruto > 20 else "Crítico")
+            md += f"| Margen Bruto Estimado | **{margen_bruto:.1f}%** | {eval_m} |\n"
+        md += "\n"
+
+        # ── Alertas operativas ───────────────────────────────────────────────────
+        if alertas:
+            md += "### Alertas y Puntos de Atención\n\n"
+            for alerta in alertas:
+                md += f"- **{alerta}**\n"
             md += "\n"
-        
-        # Métricas clave
-        if analisis.metricas_clave:
-            md += "### Métricas Clave\n"
-            md += "| Métrica | Valor |\n|---------|-------|\n"
-            for k, v in analisis.metricas_clave.items():
-                if isinstance(v, float):
-                    md += f"| {k.replace('_', ' ').title()} | {v:,.2f} |\n"
-                else:
-                    md += f"| {k.replace('_', ' ').title()} | {v} |\n"
+
+        # ── Detalle de ventas ────────────────────────────────────────────────────
+        if total_ventas_90 > 0:
+            md += "### Desempeño Comercial\n\n"
+            meses = ventas.get('ventas_mensuales', [])
+            if meses:
+                md += "**Evolución Mensual de Ingresos:**\n\n"
+                md += "| Mes | Ingresos | Unidades | Variación |\n|-----|---------|----------|-----------|\n"
+                for i, m in enumerate(meses):
+                    var_str = ""
+                    if i > 0 and meses[i-1]['total'] > 0:
+                        var = (m['total'] - meses[i-1]['total']) / meses[i-1]['total'] * 100
+                        var_str = f"▲ +{var:.0f}%" if var >= 0 else f"▼ {var:.0f}%"
+                    md += f"| {m['mes']} | **${m['total']:,.2f}** | {m['unidades']:,.0f} | {var_str} |\n"
+                md += "\n"
+
+            top_prods = ventas.get('top_productos', [])
+            if top_prods:
+                md += "**Top 5 Productos por Ingresos:**\n\n"
+                md += "| # | Producto | Ingresos | Unidades | % del Total |\n|---|----------|---------|----------|------------|\n"
+                total_top = sum(p['total'] for p in top_prods[:5])
+                for i, p in enumerate(top_prods[:5], 1):
+                    pct = (p['total'] / total_ventas_90 * 100) if total_ventas_90 > 0 else 0
+                    md += f"| {i} | {p['nombre'][:38]} | **${p['total']:,.2f}** | {p['unidades']:,.0f} | {pct:.1f}% |\n"
+                pct_top5 = (total_top / total_ventas_90 * 100) if total_ventas_90 > 0 else 0
+                md += f"\n*Top 5 representan el **{pct_top5:.0f}%** del ingreso total.*\n\n"
+
+        # ── Inventario crítico ───────────────────────────────────────────────────
+        if total_prods > 0:
+            md += "### Situación de Inventario\n\n"
+            md += "| Métrica | Valor | Estado |\n|---------|-------|--------|\n"
+            md += f"| Total SKUs | {total_prods:,} | — |\n"
+            md += f"| Total Unidades | {inventario.get('total_unidades', 0):,.0f} | — |\n"
+            if valor_inv > 0:
+                md += f"| Valor Total | ${valor_inv:,.2f} | — |\n"
+            estado_stock = "Crítico" if sin_stock / max(total_prods, 1) > 0.15 else ("Atención" if sin_stock > 0 else "Óptimo")
+            md += f"| SKUs Sin Stock | **{sin_stock}** | **{estado_stock}** |\n"
+            bajo = inventario.get('productos_bajo_stock', 0)
+            if bajo > 0:
+                md += f"| SKUs con Stock Bajo | {bajo} | Monitoreo |\n"
             md += "\n"
-        
-        # Inventario
-        if analisis.inventario:
-            md += "### Inventario\n"
-            inv = analisis.inventario
-            md += "| Métrica | Valor |\n|---------|-------|\n"
-            md += f"| Total Productos | **{inv.get('total_productos', 0):,}** |\n"
-            md += f"| Total Unidades | **{inv.get('total_unidades', 0):,.0f}** |\n"
-            md += f"| Valor Estimado | **${inv.get('valor_estimado', 0):,.2f}** |\n"
-            md += f"| Sin Stock | **{inv.get('productos_sin_stock', 0)}** |\n"
-            md += f"| Stock Bajo | **{inv.get('productos_bajo_stock', 0)}** |\n"
-            md += "\n"
-            
-            if inv.get('productos_criticos'):
-                md += "**Productos Críticos (sin stock):**\n"
-                for p in inv['productos_criticos'][:5]:
+            criticos = inventario.get('productos_criticos', [])
+            if criticos:
+                md += f"**SKUs con Agotamiento — Acción Inmediata ({len(criticos)}):**\n\n"
+                for p in criticos[:8]:
                     md += f"- {p}\n"
                 md += "\n"
-        
-        # Ventas
-        if analisis.ventas:
-            md += "### Ventas (Últimos 90 días)\n"
-            v = analisis.ventas
+
+        # ── Compras y márgenes ───────────────────────────────────────────────────
+        if total_compras > 0:
+            md += "### Compras y Estructura de Costos (90 días)\n\n"
             md += "| Métrica | Valor |\n|---------|-------|\n"
-            md += f"| Total Ventas | **${v.get('total_90_dias', 0):,.2f}** |\n"
-            md += f"| Unidades Vendidas | **{v.get('unidades_vendidas', 0):,.0f}** |\n"
-            md += f"| Núm. Órdenes | **{v.get('num_ordenes', 0):,}** |\n"
-            if v.get('ticket_promedio'):
-                md += f"| Ticket Promedio | **${v.get('ticket_promedio', 0):,.2f}** |\n"
+            md += f"| Total Compras | ${total_compras:,.2f} |\n"
+            md += f"| Unidades Compradas | {compras.get('unidades_compradas', 0):,.0f} |\n"
+            if margen_bruto is not None:
+                md += f"| Margen Bruto Estimado | **{margen_bruto:.1f}%** |\n"
             md += "\n"
-            
-            # Ventas mensuales
-            if v.get('ventas_mensuales'):
-                md += "**Ventas Mensuales:**\n"
-                md += "| Mes | Total | Unidades |\n|-----|-------|----------|\n"
-                for m in v['ventas_mensuales']:
-                    md += f"| {m['mes']} | ${m['total']:,.2f} | {m['unidades']:,.0f} |\n"
-                md += "\n"
-            
-            # Top productos
-            if v.get('top_productos'):
-                md += "**Top Productos:**\n"
-                md += "| Producto | Total | Unidades |\n|----------|-------|----------|\n"
-                for p in v['top_productos'][:5]:
-                    md += f"| {p['nombre'][:35]} | ${p['total']:,.2f} | {p['unidades']:,.0f} |\n"
-                md += "\n"
-        
-        # Compras
-        if analisis.compras and not analisis.compras.get('mensaje'):
-            md += "### Compras (Últimos 90 días)\n"
-            c = analisis.compras
-            md += "| Métrica | Valor |\n|---------|-------|\n"
-            md += f"| Total Compras | **${c.get('total_90_dias', 0):,.2f}** |\n"
-            md += f"| Unidades Compradas | **{c.get('unidades_compradas', 0):,.0f}** |\n"
+
+        # ── Recomendaciones estratégicas ─────────────────────────────────────────
+        recomendaciones = list(analisis.recomendaciones) if analisis.recomendaciones else []
+        if sin_stock > 0 and sin_stock / max(total_prods, 1) > 0.05:
+            recomendaciones.insert(0, f"Reabastecimiento urgente: {sin_stock} SKU(s) en agotamiento. "
+                                      f"Riesgo de pérdida de venta estimado en ${sin_stock * ticket_prom:,.0f}.")
+        if ticket_prom > 0 and ticket_prom < 300:
+            recomendaciones.append("Ticket promedio bajo. Implementar estrategias de bundle y upselling.")
+        if margen_bruto is not None and margen_bruto < 25:
+            recomendaciones.append(f"Margen bruto del {margen_bruto:.1f}% está por debajo del umbral saludable (>30%). "
+                                   f"Revisar estructura de costos y pricing.")
+
+        if recomendaciones:
+            md += "### Recomendaciones Estratégicas\n\n"
+            for i, rec in enumerate(recomendaciones[:5], 1):
+                md += f"{i}. {rec}\n"
             md += "\n"
-        
-        # Tendencias
-        if analisis.tendencias:
-            md += "### Tendencias\n"
-            # Formatear tendencias
-            md += "\n"
-        
-        # Recomendaciones
-        if analisis.recomendaciones:
-            md += "### Recomendaciones\n"
-            for rec in analisis.recomendaciones:
-                md += f"- {rec}\n"
-            md += "\n"
-        
+
         return md
     
     @staticmethod

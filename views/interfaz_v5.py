@@ -1140,6 +1140,12 @@ class OdooAIProV5:
     VERSION = "1.0.0"
     NOMBRE = "ANDROMEDA"
     
+    # Historial de sesión persistente: {sesion_id: [mensajes]}
+    # Permite recuperar la conversación si el usuario cambia de ruta y regresa
+    _sesiones_historial: dict = {}
+    MAX_SESIONES = 500          # máximo de sesiones en memoria
+    MAX_HISTORIAL_SESION = 200  # máximo de mensajes por sesión
+
     def __init__(self):
         print(f"\n{'='*60}")
         print(f"Iniciando {self.NOMBRE} v{self.VERSION}")
@@ -1481,7 +1487,14 @@ class OdooAIProV5:
         """Ejecuta una acción a través del gestor multi-agente cuando está disponible."""
         if self.gestor_agentes and agente_id:
             try:
-                return self.gestor_agentes.ejecutar_accion(agente_id, consulta, mensaje)
+                result = self.gestor_agentes.ejecutar_accion(agente_id, consulta, mensaje)
+                # Guard defensivo: verificar que el resultado sea una tupla válida de 2 elementos
+                if isinstance(result, tuple) and len(result) == 2:
+                    return result
+                if result is not None:
+                    logger.warning(
+                        f"Agente '{agente_id}' retornó tipo inesperado: {type(result).__name__} — usando ejecutor directo"
+                    )
             except Exception as e:
                 logger.warning(f"Error en agente '{agente_id}': {e} — usando ejecutor directo")
         return self._ejecutar_accion(consulta, mensaje)
@@ -1814,6 +1827,26 @@ class OdooAIProV5:
                 )
             
             return historial, "", f"✓ {tipo_emp}"
+
+        # 1b. Pre-interceptar solicitud de gráfica contextual pura.
+        # Solo activa si el mensaje ES SOLO sobre gráfica (no contiene solicitud de datos nuevos)
+        # para evitar que "ventas por tienda con gráfica" se intercepte aquí.
+        _palabras_datos = {
+            'ventas', 'venta', 'inventario', 'stock', 'factura', 'cliente', 'compra',
+            'producto', 'tienda', 'pos', 'pedido', 'cobrar', 'pagar', 'predicci',
+            'predice', 'analiza', 'análisis', 'reporte', 'informe', 'kpi', 'financiero',
+        }
+        _msg_lower = mensaje.lower()
+        _tiene_datos = any(p in _msg_lower for p in _palabras_datos)
+        if self._quiere_grafica(mensaje) and not _tiene_datos and self.ultimo_df is not None:
+            grafica_html = self._generar_html_grafica(None, mensaje)
+            if grafica_html:
+                respuesta_grafica = (
+                    "📊 **Visualización generada** a partir de los últimos datos consultados:\n\n"
+                    + grafica_html
+                )
+                historial.append({"role": "assistant", "content": respuesta_grafica})
+                return historial, self._df_a_html(self.ultimo_df.head(30)), "✓ grafica_contextual"
         
         # 2. Si LLM está activo, usar el agente inteligente
         if self.llm_activo and self.agente_llm:
@@ -1920,12 +1953,23 @@ class OdooAIProV5:
             
             historial.append({"role": "assistant", "content": respuesta_final})
             
-            # Generar tabla HTML
+            # Generar tabla HTML / gráfica
             tabla_html = ""
             if df is not None and not df.empty:
                 self.ultimo_df = df
                 tabla_html = self._df_a_html(df.head(30))
-            
+            accion_str = (accion.accion if accion and hasattr(accion, 'accion') else '') or ''
+            if self._quiere_grafica(mensaje, accion_str):
+                grafica_html = self._generar_html_grafica(df, mensaje)
+                if grafica_html:
+                    # Insertar gráfica al final del mensaje del chat (chatbot acepta HTML)
+                    if historial and historial[-1].get('role') == 'assistant':
+                        historial[-1]['content'] += '\n\n' + grafica_html
+                    if tabla_html:  # tabla sigue en el panel
+                        tabla_html = grafica_html + "<hr/>" + tabla_html
+                    else:
+                        tabla_html = grafica_html
+
             # Guardar en memoria jerárquica (incluye semántica vectorial)
             if self.memoria_jerarquica:
                 try:
@@ -2088,81 +2132,10 @@ class OdooAIProV5:
             except Exception:
                 pass
 
-        # Si Ollama está activo, mejorar el análisis de intención
-        intencion_mejorada = None
-        if self.ollama_activo and self.ollama_integrador:
-            try:
-                analisis = self.ollama_integrador.analizar_intencion(mensaje)
-                # Validar que el análisis tenga confianza suficiente
-                if analisis and isinstance(analisis, dict) and analisis.get('confianza', 0) > 0.7:
-                    intencion_mejorada = analisis
-                    
-                    # Registrar análisis de Ollama
-                    if self.logger:
-                        self.logger.registrar_evento(
-                            tipo=TipoEvento.OLLAMA,
-                            mensaje="Análisis Ollama de intención",
-                            modulo="InterfazAndromeda._procesar_tradicional",
-                            contexto={'mensaje': mensaje[:100], 'analisis': str(analisis)[:200]}
-                        )
-            except Exception as e:
-                print(f"⚠️ Error con Ollama: {e}")
-                if self.logger:
-                    self.logger.registrar_error(
-                        error=e,
-                        modulo="InterfazAndromeda._procesar_tradicional",
-                        contexto={'mensaje': mensaje[:100]},
-                        critico=False
-                    )
-        
-        # Procesar con NLP avanzado
+        # Procesar con NLP avanzado — única fuente de clasificación de intención.
+        # La confianza proviene de similitud coseno real (MotorEmbeddings), no de un LLM.
+        # Ollama/LLM entra DESPUÉS, solo para generación de texto (ver ejecutor_acciones.py).
         consulta = self.nlp.entender(mensaje)
-
-        # Catálogo válido para no inyectar intenciones/acciones que no existen en el sistema.
-        intenciones_validas = set(getattr(self.nlp, 'intenciones_map', {}).keys())
-        
-        # Si Ollama proporcionó una mejor intención, enriquecer la consulta
-        if intencion_mejorada and isinstance(intencion_mejorada, dict):
-            # Actualizar intención principal
-            intencion_ollama = intencion_mejorada.get('intencion')
-            if isinstance(intencion_ollama, str) and intencion_ollama in intenciones_validas:
-                consulta.intencion_principal = intencion_ollama
-            
-            # Actualizar confianza si es mayor
-            if intencion_mejorada.get('confianza') and intencion_mejorada['confianza'] > consulta.confianza:
-                consulta.confianza = intencion_mejorada['confianza']
-            
-            # Agregar palabras clave de Ollama (consulta.entidades es dict)
-            palabras_clave = intencion_mejorada.get('palabras_clave')
-            if palabras_clave and isinstance(palabras_clave, list):
-                if 'palabras_clave' not in consulta.entidades:
-                    consulta.entidades['palabras_clave'] = []
-                
-                # Asegurar que sea lista antes de extender
-                if isinstance(consulta.entidades['palabras_clave'], list):
-                    # Evitar duplicados al agregar
-                    nuevas = [pk for pk in palabras_clave if pk not in consulta.entidades['palabras_clave']]
-                    consulta.entidades['palabras_clave'].extend(nuevas)
-                else:
-                    consulta.entidades['palabras_clave'] = palabras_clave
-            
-            # Agregar contexto adicional de Ollama si existe
-            if intencion_mejorada.get('contexto'):
-                consulta.entidades['contexto_ollama'] = intencion_mejorada['contexto']
-
-            # Aplicar acción sugerida solo si pertenece a la intención final válida
-            accion_sugerida = intencion_mejorada.get('accion_sugerida')
-            config_intencion = self.nlp.intenciones_map.get(consulta.intencion_principal, {})
-            accion_valida = config_intencion.get('accion')
-            if isinstance(accion_sugerida, str) and accion_sugerida and accion_sugerida == accion_valida:
-                consulta.accion_sugerida = accion_sugerida
-
-            # Mezclar parámetros sugeridos de Ollama sin pisar parámetros ya detectados por NLP
-            params_ollama = intencion_mejorada.get('parametros_sugeridos')
-            if isinstance(params_ollama, dict):
-                for k, v in params_ollama.items():
-                    if k not in consulta.parametros:
-                        consulta.parametros[k] = v
 
         # Aplicar memoria contextual (modelo/filtros activos) antes de rutear
         if self.memoria_jerarquica:
@@ -2416,12 +2389,20 @@ class OdooAIProV5:
         
         historial.append({"role": "assistant", "content": respuesta})
         
-        # Generar tabla HTML
+        # Generar tabla HTML / gráfica
         tabla_html = ""
         if df is not None and not df.empty:
             self.ultimo_df = df
             tabla_html = self._df_a_html(df.head(30))
-        
+        accion_trad = getattr(consulta, 'accion_sugerida', '') or ''
+        if self._quiere_grafica(mensaje, accion_trad):
+            grafica_html = self._generar_html_grafica(df, mensaje)
+            if grafica_html:
+                # Insertar gráfica al final del mensaje del chat
+                if historial and historial[-1].get('role') == 'assistant':
+                    historial[-1]['content'] += '\n\n' + grafica_html
+                tabla_html = grafica_html + ("<hr/>" + tabla_html if tabla_html else "")
+
         # Registrar prompt después de procesar
         if self.logger:
             self.logger.registrar_prompt(
@@ -2520,52 +2501,145 @@ class OdooAIProV5:
         return self._mapeador_consultas.mapear(accion, fecha_ini, fecha_fin, params, consulta)
 
     def _resumen_confiable_desde_dataframe(self, consulta: ConsultaEntendida, df) -> str:
-        """Genera un resumen determinista usando solo datos verificables del DataFrame."""
-        accion_legible = (getattr(consulta, 'accion_sugerida', '') or getattr(consulta, 'intencion_principal', 'consulta')).replace('_', ' ').title()
-        
-        _nombres_cols = {
-            'amount_total': 'Monto Total', 'amount_untaxed': 'Subtotal',
-            'amount_tax': 'Impuestos', 'amount_residual': 'Saldo Pendiente',
-            'price_subtotal': 'Subtotal', 'price_unit': 'Precio Unitario',
-            'product_uom_qty': 'Cantidad', 'qty_available': 'Stock Disponible',
-            'quantity': 'Cantidad', 'standard_price': 'Costo',
-        }
-        _cols_monetarias = {'amount_total', 'amount_untaxed', 'amount_tax', 'amount_residual',
-                           'price_subtotal', 'price_unit', 'standard_price', 'wage', 'total', 'balance'}
-        
-        lineas = [f"## 📊 {accion_legible}", "", f"**Registros analizados:** {len(df):,}"]
+        """Genera un informe ejecutivo desde el DataFrame — formato Junta Directiva / CDO."""
+        import pandas as _pd
+        from datetime import datetime as _dt
 
+        accion_raw = getattr(consulta, 'accion_sugerida', '') or getattr(consulta, 'intencion_principal', 'consulta')
+        accion_legible = accion_raw.replace('_', ' ').title()
+        n = len(df)
+
+        # ── 1. Limpiar campos many2one [id, 'Name'] ───────────────────────────
+        df = df.copy()
+        for col in df.columns:
+            try:
+                df[col] = df[col].apply(
+                    lambda x: x[1] if isinstance(x, (list, tuple)) and len(x) == 2 else x
+                )
+            except Exception:
+                pass
+
+        # ── 2. Excluir columnas técnicas ──────────────────────────────────────
+        _excluir = {'id', 'write_uid', 'create_uid', 'message_follower_ids',
+                    'activity_ids', 'message_ids', 'currency_id', 'company_id'}
+        df = df[[c for c in df.columns if c not in _excluir and not str(c).endswith('_uid')]]
+        if df.empty:
+            return f"## 📊 {accion_legible}\n\n> Sin datos disponibles para presentar."
+
+        # ── 3. Detectar columna de entidad/categoría ──────────────────────────
+        _prio_cat = ['partner_id', 'product_id', 'config_id', 'team_id', 'categ_id',
+                     'warehouse_id', 'journal_id', 'department_id', 'user_id',
+                     'Tienda', 'Cliente', 'Producto', 'Vendedor', 'name', 'x_name']
+        col_cat = None
+        for p in _prio_cat:
+            if p in df.columns:
+                col_cat = p
+                break
+        if col_cat is None:
+            obj_cols = [c for c in df.columns if df[c].dtype == object]
+            if obj_cols:
+                col_cat = obj_cols[0]
+
+        # ── 4. Detectar columna monetaria principal ───────────────────────────
+        _prio_mon = ['amount_total', 'amount_untaxed', 'price_subtotal', 'price_total',
+                     'lst_price', 'standard_price', 'wage', 'debit', 'balance',
+                     'Ventas Total', 'Ventas_Total', 'total', 'subtotal', 'monto']
+        col_mon = None
         try:
-            columnas_numericas = df.select_dtypes(include=['number']).columns.tolist()
+            num_cols = df.select_dtypes(include=['number']).columns.tolist()
         except Exception:
-            columnas_numericas = []
+            num_cols = []
+        for p in _prio_mon:
+            if p in num_cols:
+                col_mon = p
+                break
+        if col_mon is None and num_cols:
+            col_mon = num_cols[0]
 
-        if columnas_numericas:
+        es_monetaria = col_mon and (
+            any(k in str(col_mon).lower() for k in ('amount', 'price', 'total', 'cost', 'wage', 'ventas', 'monto', 'balance', 'debit'))
+        )
+
+        # ── 5. Encabezado ejecutivo ───────────────────────────────────────────
+        lineas = [f"## 📊 {accion_legible}", ""]
+        lineas.append(f"> **{n:,}** registros analizados &nbsp;|&nbsp; {_dt.now().strftime('%d/%m/%Y %H:%M')}")
+        lineas.append("")
+
+        # ── 6. Si hay categoría + monto → tabla de ranking ────────────────────
+        if col_cat and col_mon and n > 1:
+            total_global = df[col_mon].sum()
+            try:
+                ranking = (
+                    df.groupby(col_cat, as_index=False)[col_mon]
+                    .sum()
+                    .sort_values(col_mon, ascending=False)
+                    .head(10)
+                    .reset_index(drop=True)
+                )
+                label_cat = str(col_cat).replace('_id', '').replace('_', ' ').title()
+                label_mon = str(col_mon).replace('_', ' ').title()
+                lineas.append(f"### Ranking por {label_cat}")
+                lineas.append("")
+                lineas.append(f"| # | {label_cat} | {label_mon} | % del Total |")
+                lineas.append(f"|---|{'---'*max(1,len(label_cat)//3)}|{'-'*10}|------------|")
+                for i, row in ranking.iterrows():
+                    val = row[col_mon]
+                    pct = (val / total_global * 100) if total_global > 0 else 0
+                    fmt_val = f"${val:,.2f}" if es_monetaria else f"{val:,.1f}"
+                    cat_name = str(row[col_cat])[:40]
+                    lineas.append(f"| {i+1} | {cat_name} | **{fmt_val}** | {pct:.1f}% |")
+                lineas.append("")
+
+                # Insights automáticos
+                if len(ranking) >= 2:
+                    lider = ranking.iloc[0]
+                    ultimo = ranking.iloc[-1]
+                    pct_lider = (lider[col_mon] / total_global * 100) if total_global > 0 else 0
+                    lineas.append("### Hallazgos Clave")
+                    lineas.append("")
+                    fmt_l = f"${lider[col_mon]:,.2f}" if es_monetaria else f"{lider[col_mon]:,.1f}"
+                    fmt_u = f"${ultimo[col_mon]:,.2f}" if es_monetaria else f"{ultimo[col_mon]:,.1f}"
+                    lineas.append(f"- **Líder:** {str(lider[col_cat])[:40]} concentra el **{pct_lider:.0f}%** del total ({fmt_l}).")
+                    brecha_pct = ((lider[col_mon] - ultimo[col_mon]) / lider[col_mon] * 100) if lider[col_mon] > 0 else 0
+                    lineas.append(f"- **Brecha líder/último:** {brecha_pct:.0f}% — de {fmt_l} a {fmt_u}.")
+                    top3_pct = (ranking.head(3)[col_mon].sum() / total_global * 100) if total_global > 0 else 0
+                    if top3_pct > 70:
+                        lineas.append(f"- **Alta concentración:** el Top 3 acumula el {top3_pct:.0f}% del total. Riesgo de dependencia.")
+                    fmt_tot = f"${total_global:,.2f}" if es_monetaria else f"{total_global:,.1f}"
+                    lineas.append(f"- **Total consolidado:** {fmt_tot} en {n} registros.")
+                    lineas.append("")
+            except Exception:
+                pass  # fallback a tabla simple si groupby falla
+
+        elif col_mon and num_cols:
+            # Solo numéricos — resumen ejecutivo de KPIs
+            lineas.append("### Resumen Ejecutivo")
             lineas.append("")
-            lineas.append("| Métrica | Total | Promedio | Rango |")
-            lineas.append("|---------|-------|----------|-------|")
-            for columna in columnas_numericas[:4]:
-                serie = df[columna].dropna()
+            lineas.append("| Indicador | Valor |")
+            lineas.append("|-----------|-------|")
+            for col in num_cols[:5]:
+                serie = df[col].dropna()
                 if serie.empty:
                     continue
-                nombre = _nombres_cols.get(columna, columna.replace('_', ' ').title())
-                es_moneda = columna.lower() in _cols_monetarias or any(p in columna.lower() for p in ('amount', 'price', 'total', 'cost'))
-                if es_moneda:
-                    lineas.append(
-                        f"| {nombre} | **${serie.sum():,.2f}** | ${serie.mean():,.2f} | ${serie.min():,.2f} - ${serie.max():,.2f} |"
-                    )
-                else:
-                    lineas.append(
-                        f"| {nombre} | **{serie.sum():,.0f}** | {serie.mean():,.1f} | {serie.min():,.0f} - {serie.max():,.0f} |"
-                    )
-        else:
-            columnas = [str(col) for col in df.columns[:5]]
-            if columnas:
-                lineas.append("")
-                lineas.append(f"**Campos disponibles:** {', '.join(columnas)}")
+                label = str(col).replace('_', ' ').title()
+                es_mon_col = any(k in col.lower() for k in ('amount', 'price', 'total', 'cost', 'wage', 'ventas', 'monto'))
+                total = serie.sum()
+                fmt = f"${total:,.2f}" if es_mon_col else f"{total:,.0f}"
+                lineas.append(f"| {label} | **{fmt}** |")
+            lineas.append("")
 
-        lineas.append("")
-        lineas.append("_Resumen generado con datos verificados del sistema._")
+        else:
+            # Solo texto — mostrar primeras filas
+            lineas.append("### Datos")
+            lineas.append("")
+            try:
+                lineas.append(df.head(15).to_markdown(index=False))
+            except Exception:
+                for _, row in df.head(10).iterrows():
+                    lineas.append("- " + " | ".join(f"**{k}:** {v}" for k, v in row.items() if _pd.notna(v)))
+            lineas.append("")
+
+        lineas.append(f"_Análisis ejecutivo generado por **ANDROMEDA** · Datos verificados en tiempo real · {_dt.now().strftime('%d/%m/%Y %H:%M')}_")
         return "\n".join(lineas)
 
     def _regenerar_respuesta_confiable(self, consulta: ConsultaEntendida, mensaje: str, respuesta_actual: str, df, problemas: List[str], intento: int) -> str:
@@ -2628,9 +2702,8 @@ class OdooAIProV5:
             problemas_ultimo_intento = resultado_val.problemas or []
 
             requiere_reintento = (
-                not resultado_val.es_valida
-                or resultado_val.accion_correctiva == 'rechazada'
-                or confianza_actual < 0.78
+                resultado_val.accion_correctiva == 'rechazada'
+                or confianza_actual < 0.45
             )
             if not requiere_reintento or intento == max_intentos:
                 return respuesta_actual, confianza_actual, problemas_ultimo_intento, intento
@@ -2676,6 +2749,68 @@ class OdooAIProV5:
         'precio', 'costo', 'ingreso', 'egreso', 'valor', 'sum',
         'price_reduce', 'price_reduce_taxinc', 'amount_residual_signed',
     }
+
+    # ── Palabras clave que indican solicitud de gráfica ──────────────────────
+    _PALABRAS_GRAFICA = {
+        'grafica', 'gráfica', 'grafico', 'gráfico', 'grafic', 'graficame',
+        'graficar', 'visualiza', 'visualizar', 'chart', 'plot', 'dibuja',
+        'muestra.*grafica', 'genera.*grafica', 'crea.*grafica',
+    }
+
+    def _quiere_grafica(self, mensaje: str, accion: str = "") -> bool:
+        """Detecta si el usuario solicitó una gráfica."""
+        msg = mensaje.lower()
+        return (
+            any(p in msg for p in self._PALABRAS_GRAFICA)
+            or str(accion).startswith('graficar')
+        )
+
+    def _generar_html_grafica(self, df, mensaje: str) -> str:
+        """Genera HTML de gráfica. Si df está vacío usa self.ultimo_df."""
+        if not self.generador_graficas:
+            return ""
+
+        # ── Caso especial: predicción de ventas ───────────────────────────────
+        # El ejecutor almacena el objeto PrediccionInteligente completo en
+        # self.ultima_prediccion para poder graficar histórico + proyección.
+        ultima_pred = getattr(self, 'ultima_prediccion', None)
+        if ultima_pred is not None and getattr(ultima_pred, 'datos_proyectados', None):
+            try:
+                resultado_pred = self.generador_graficas.grafica_prediccion(
+                    datos_historicos=getattr(ultima_pred, 'datos_historicos', [])[-30:],
+                    datos_proyectados=ultima_pred.datos_proyectados,
+                    titulo=getattr(ultima_pred, 'titulo', 'Predicción de Ventas'),
+                    contexto=mensaje,
+                )
+                self.ultima_prediccion = None  # consumir: no reutilizar en siguiente llamada
+                if resultado_pred:
+                    if resultado_pred.strip().startswith('<'):
+                        return resultado_pred
+                    return f'<img src="{resultado_pred}" style="max-width:100%;border-radius:8px;margin-top:8px" />'
+            except Exception as e_pred:
+                print(f"Error generando gráfica predicción: {e_pred}")
+                self.ultima_prediccion = None
+        # ── Flujo normal ───────────────────────────────────────────────────────
+        df_usar = df
+        if df_usar is None or (hasattr(df_usar, 'empty') and df_usar.empty):
+            if self.ultimo_df is not None and hasattr(self.ultimo_df, 'empty') and not self.ultimo_df.empty:
+                df_usar = self.ultimo_df
+            else:
+                return ""
+        try:
+            resultado = self.generador_graficas.generar_grafica_auto(
+                df=df_usar,
+                contexto=mensaje,
+            )
+            if not resultado:
+                return ""
+            # Plotly → HTML div; Matplotlib → data:image/png;base64,...
+            if resultado.strip().startswith('<'):
+                return resultado
+            return f'<img src="{resultado}" style="max-width:100%;border-radius:8px;margin-top:8px" />'
+        except Exception as e:
+            print(f"Error generando gráfica: {e}")
+            return ""
 
     def _es_columna_monetaria(self, nombre_col: str) -> bool:
         """Detecta si una columna contiene valores monetarios por su nombre."""
@@ -3053,8 +3188,8 @@ class OdooAIProV5:
                             sanitize_html=False  # Permitir HTML de Plotly
                         )
                         
-                        # Tabla de datos (colapsable)
-                        with gr.Accordion("Datos y Resultados", open=False):
+                        # Tabla de datos (se abre automáticamente cuando hay contenido)
+                        with gr.Accordion("Datos y Resultados", open=True):
                             tabla = gr.HTML()
                         
                         # ============== INPUT ESTILO GEMINI PROFESIONAL ==============
@@ -3270,17 +3405,53 @@ class OdooAIProV5:
             # Status bar (oculto pero funcional)
             status = gr.Textbox(value="✓ Listo", show_label=False, visible=False)
             
+            # ============== ESTADO DE SESIÓN PERSISTENTE ==============
+            sesion_id = gr.State(None)
+
             # ============== EVENTOS ==============
-            def enviar(m, h):
+            def _guardar_sesion(sid: str, historial: list) -> None:
+                """Persiste el historial en la store de la clase."""
+                if not sid:
+                    return
+                cls = type(self)
+                # Evitar crecer indefinidamente
+                if len(historial) > cls.MAX_HISTORIAL_SESION:
+                    historial = historial[-cls.MAX_HISTORIAL_SESION:]
+                cls._sesiones_historial[sid] = historial
+                # Purgar sesiones más antiguas si se supera el límite
+                if len(cls._sesiones_historial) > cls.MAX_SESIONES:
+                    eliminadas = len(cls._sesiones_historial) - cls.MAX_SESIONES
+                    for k in list(cls._sesiones_historial.keys())[:eliminadas]:
+                        del cls._sesiones_historial[k]
+
+            def _cargar_sesion(sid):
+                """Genera o recupera un session_id y restaura el historial."""
+                import uuid
+                if not sid:
+                    sid = str(uuid.uuid4())
+                historial = type(self)._sesiones_historial.get(sid, [])
+                return historial, sid
+
+            def enviar(m, h, sid):
+                import uuid
+                if not sid:
+                    sid = str(uuid.uuid4())
+                # Si el historial llegó vacío pero teníamos sesión guardada, restaurar
+                if not h:
+                    h = type(self)._sesiones_historial.get(sid, [])
                 h_new, t, s = self.procesar_mensaje(m, h)
-                return h_new, t, s, ""
-            
-            def sugerir(txt, h):
-                return enviar(txt, h)
-            
+                _guardar_sesion(sid, h_new)
+                return h_new, t, s, "", sid
+
+            def sugerir(txt, h, sid):
+                return enviar(txt, h, sid)
+
+            # Restaurar historial al cargar la página
+            app.load(_cargar_sesion, inputs=[sesion_id], outputs=[chatbot, sesion_id])
+
             # Eventos principales
-            btn.click(enviar, [msg, chatbot], [chatbot, tabla, status, msg])
-            msg.submit(enviar, [msg, chatbot], [chatbot, tabla, status, msg])
+            btn.click(enviar, [msg, chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            msg.submit(enviar, [msg, chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
             
             # Estados para controlar visibilidad de paneles
             estado_acciones = gr.State(False)
@@ -3301,58 +3472,61 @@ class OdooAIProV5:
             btn_mic.click(toggle_voz, inputs=[estado_voz], outputs=[panel_voz, estado_voz])
             
             # Predicciones
-            p1.click(lambda h: sugerir("Predice las ventas para los próximos 7 días", h), [chatbot], [chatbot, tabla, status, msg])
-            p2.click(lambda h: sugerir("¿Qué productos se van a agotar?", h), [chatbot], [chatbot, tabla, status, msg])
-            p3.click(lambda h: sugerir("Predice el flujo de caja para 30 días", h), [chatbot], [chatbot, tabla, status, msg])
-            p4.click(lambda h: sugerir("Score de salud del negocio", h), [chatbot], [chatbot, tabla, status, msg])
-            p5.click(lambda h: sugerir("Analiza patrones de estacionalidad", h), [chatbot], [chatbot, tabla, status, msg])
+            p1.click(lambda h, sid: sugerir("Predice las ventas para los próximos 7 días", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            p2.click(lambda h, sid: sugerir("¿Qué productos se van a agotar?", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            p3.click(lambda h, sid: sugerir("Predice el flujo de caja para 30 días", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            p4.click(lambda h, sid: sugerir("Score de salud del negocio", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            p5.click(lambda h, sid: sugerir("Analiza patrones de estacionalidad", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
             
             # Business Intelligence Experto
-            bi1.click(lambda h: sugerir("Dashboard de KPIs ejecutivo", h), [chatbot], [chatbot, tabla, status, msg])
-            bi2.click(lambda h: sugerir("Reporte de Business Intelligence completo", h), [chatbot], [chatbot, tabla, status, msg])
-            bi3.click(lambda h: sugerir("Auditoría de fraude y riesgos financieros", h), [chatbot], [chatbot, tabla, status, msg])
-            bi4.click(lambda h: sugerir("Detectar anomalías financieras", h), [chatbot], [chatbot, tabla, status, msg])
-            bi5.click(lambda h: sugerir("Análisis de riesgos empresariales", h), [chatbot], [chatbot, tabla, status, msg])
+            bi1.click(lambda h, sid: sugerir("Dashboard de KPIs ejecutivo", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            bi2.click(lambda h, sid: sugerir("Reporte de Business Intelligence completo", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            bi3.click(lambda h, sid: sugerir("Auditoría de fraude y riesgos financieros", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            bi4.click(lambda h, sid: sugerir("Detectar anomalías financieras", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            bi5.click(lambda h, sid: sugerir("Análisis de riesgos empresariales", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
             
             # Auditoría Inteligente
-            aud1.click(lambda h: sugerir("Ejecutar auditoría nocturna completa de la base de datos", h), [chatbot], [chatbot, tabla, status, msg])
-            aud2.click(lambda h: sugerir("Mostrar semáforo de salud operativa", h), [chatbot], [chatbot, tabla, status, msg])
-            aud3.click(lambda h: sugerir("Detectar pagos fantasma y movimientos sospechosos", h), [chatbot], [chatbot, tabla, status, msg])
-            aud4.click(lambda h: sugerir("Analizar riesgo de churn de clientes", h), [chatbot], [chatbot, tabla, status, msg])
-            aud5.click(lambda h: sugerir("Calcular reposición de inventario justo a tiempo", h), [chatbot], [chatbot, tabla, status, msg])
-            aud6.click(lambda h: sugerir("Analizar productos con stock lento o muerto", h), [chatbot], [chatbot, tabla, status, msg])
-            aud7.click(lambda h: sugerir("Identificar clientes olvidados que dejaron de comprar", h), [chatbot], [chatbot, tabla, status, msg])
-            aud8.click(lambda h: sugerir("Detectar diferencias de centavos y residuales en facturas", h), [chatbot], [chatbot, tabla, status, msg])
-            aud9.click(lambda h: sugerir("Diagnosticar error de Odoo", h), [chatbot], [chatbot, tabla, status, msg])
-            aud10.click(lambda h: sugerir("Ejecutar auditoría de calidad de datos con triple validación", h), [chatbot], [chatbot, tabla, status, msg])
+            aud1.click(lambda h, sid: sugerir("Ejecutar auditoría nocturna completa de la base de datos", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            aud2.click(lambda h, sid: sugerir("Mostrar semáforo de salud operativa", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            aud3.click(lambda h, sid: sugerir("Detectar pagos fantasma y movimientos sospechosos", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            aud4.click(lambda h, sid: sugerir("Analizar riesgo de churn de clientes", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            aud5.click(lambda h, sid: sugerir("Calcular reposición de inventario justo a tiempo", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            aud6.click(lambda h, sid: sugerir("Analizar productos con stock lento o muerto", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            aud7.click(lambda h, sid: sugerir("Identificar clientes olvidados que dejaron de comprar", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            aud8.click(lambda h, sid: sugerir("Detectar diferencias de centavos y residuales en facturas", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            aud9.click(lambda h, sid: sugerir("Diagnosticar error de Odoo", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            aud10.click(lambda h, sid: sugerir("Ejecutar auditoría de calidad de datos con triple validación", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
             
             # Análisis
-            a1.click(lambda h: sugerir("Análisis de ventas del mes", h), [chatbot], [chatbot, tabla, status, msg])
-            a2.click(lambda h: sugerir("Análisis del POS de hoy", h), [chatbot], [chatbot, tabla, status, msg])
-            a3.click(lambda h: sugerir("Cuentas por cobrar", h), [chatbot], [chatbot, tabla, status, msg])
-            a4.click(lambda h: sugerir("Cuentas por pagar", h), [chatbot], [chatbot, tabla, status, msg])
-            a5.click(lambda h: sugerir("Análisis de inventario", h), [chatbot], [chatbot, tabla, status, msg])
-            a6.click(lambda h: sugerir("Análisis de compras y top proveedores", h), [chatbot], [chatbot, tabla, status, msg])
-            a7.click(lambda h: sugerir("Empleados por departamento", h), [chatbot], [chatbot, tabla, status, msg])
-            a8.click(lambda h: sugerir("Contratos por vencer", h), [chatbot], [chatbot, tabla, status, msg])
-            a9.click(lambda h: sugerir("Análisis del CRM", h), [chatbot], [chatbot, tabla, status, msg])
-            a10.click(lambda h: sugerir("Compara ventas de hoy vs ayer", h), [chatbot], [chatbot, tabla, status, msg])
+            a1.click(lambda h, sid: sugerir("Análisis de ventas del mes", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            a2.click(lambda h, sid: sugerir("Análisis del POS de hoy", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            a3.click(lambda h, sid: sugerir("Cuentas por cobrar", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            a4.click(lambda h, sid: sugerir("Cuentas por pagar", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            a5.click(lambda h, sid: sugerir("Análisis de inventario", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            a6.click(lambda h, sid: sugerir("Análisis de compras y top proveedores", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            a7.click(lambda h, sid: sugerir("Empleados por departamento", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            a8.click(lambda h, sid: sugerir("Contratos por vencer", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            a9.click(lambda h, sid: sugerir("Análisis del CRM", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            a10.click(lambda h, sid: sugerir("Compara ventas de hoy vs ayer", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
             
             # Reportes
-            r1.click(lambda h: sugerir("Generar Excel", h), [chatbot], [chatbot, tabla, status, msg])
-            r2.click(lambda h: sugerir("Generar PDF", h), [chatbot], [chatbot, tabla, status, msg])
-            r3.click(lambda h: sugerir("Top 10 productos más vendidos del mes", h), [chatbot], [chatbot, tabla, status, msg])
-            r4.click(lambda h: sugerir("Top 10 mejores clientes", h), [chatbot], [chatbot, tabla, status, msg])
-            r5.click(lambda h: sugerir("Qué puedes hacer", h), [chatbot], [chatbot, tabla, status, msg])
+            r1.click(lambda h, sid: sugerir("Generar Excel", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            r2.click(lambda h, sid: sugerir("Generar PDF", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            r3.click(lambda h, sid: sugerir("Top 10 productos más vendidos del mes", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            r4.click(lambda h, sid: sugerir("Top 10 mejores clientes", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
+            r5.click(lambda h, sid: sugerir("Qué puedes hacer", h, sid), [chatbot, sesion_id], [chatbot, tabla, status, msg, sesion_id])
             
             # ============== PROCESAMIENTO DE VOZ ==============
-            def procesar_audio(audio_path, historial):
+            def procesar_audio(audio_path, historial, sid):
                 """Convierte audio a texto y lo procesa como mensaje."""
+                import uuid
+                if not sid:
+                    sid = str(uuid.uuid4())
                 if audio_path is None:
-                    return historial, "", "No hay audio grabado", ""
+                    return historial, "", "No hay audio grabado", "", sid
                 
                 if not VOZ_DISPONIBLE:
-                    return historial, "", "Reconocimiento de voz no disponible. Instala: pip install SpeechRecognition", ""
+                    return historial, "", "Reconocimiento de voz no disponible. Instala: pip install SpeechRecognition", "", sid
                 
                 try:
                     recognizer = sr.Recognizer()
@@ -3367,22 +3541,23 @@ class OdooAIProV5:
                     if texto:
                         # Procesar el mensaje como si fuera texto
                         h_new, t, _ = self.procesar_mensaje(texto, historial)
-                        return h_new, t, f"Reconocido: \"{texto}\"", texto
+                        _guardar_sesion(sid, h_new)
+                        return h_new, t, f"Reconocido: \"{texto}\"", texto, sid
                     else:
-                        return historial, "", "No se pudo reconocer el audio", ""
+                        return historial, "", "No se pudo reconocer el audio", "", sid
                         
                 except sr.UnknownValueError:
-                    return historial, "", "No se pudo entender el audio. Intenta hablar más claro.", ""
+                    return historial, "", "No se pudo entender el audio. Intenta hablar más claro.", "", sid
                 except sr.RequestError as e:
-                    return historial, "", f"Error de conexión con el servicio de voz: {e}", ""
+                    return historial, "", f"Error de conexión con el servicio de voz: {e}", "", sid
                 except Exception as e:
-                    return historial, "", f"Error procesando audio: {str(e)}", ""
+                    return historial, "", f"Error procesando audio: {str(e)}", "", sid
             
             # Evento del botón de voz
             btn_voz.click(
                 procesar_audio, 
-                [audio_input, chatbot], 
-                [chatbot, tabla, voz_status, msg]
+                [audio_input, chatbot, sesion_id], 
+                [chatbot, tabla, voz_status, msg, sesion_id]
             )
         
         return app

@@ -210,7 +210,7 @@ class TestUsuario:
             nombre="Juan Pérez",
             email=f"juan_{uuid.uuid4().hex[:6]}@corp.com",
             empresa_id=e.id,
-            rol="operador",
+            rol="agente",
             activo=True,
         )
         session.add(u)
@@ -224,7 +224,7 @@ class TestUsuario:
             e, u = self._crear_empresa_y_usuario(session)
             assert u.id is not None
             assert u.empresa_id == e.id
-            assert u.rol == "operador"
+            assert u.rol == "agente"
         finally:
             session.close()
 
@@ -257,7 +257,7 @@ class TestUsuario:
             )
             session.add(e)
             session.flush()
-            for rol in ["admin", "operador", "viewer"]:
+            for rol in ["admin", "agente", "usuario"]:
                 u = Usuario(
                     id=str(uuid.uuid4()),
                     nombre=f"User {rol}",
@@ -578,16 +578,18 @@ class TestLoggingSaas:
 
 @pytest.fixture()
 def api_client():
-    """TestClient de FastAPI con bot mockeado."""
+    """TestClient de FastAPI con bot mockeado y admin auth bypass."""
     from fastapi.testclient import TestClient
     from app.api.main_api import app
     from app.api.dependencies import get_bot
+    from app.api.routers.admin import _solo_admin
 
     mock_bot = MagicMock()
     mock_bot.procesar_mensaje.return_value = (
         [{"role": "assistant", "content": "OK"}], "", "✓ ventas"
     )
     app.dependency_overrides[get_bot] = lambda: mock_bot
+    app.dependency_overrides[_solo_admin] = lambda: {"sub": "admin-test", "rol": "admin", "empresa_id": None}
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.clear()

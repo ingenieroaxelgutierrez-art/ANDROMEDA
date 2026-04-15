@@ -166,7 +166,7 @@ class MotorNeuralLSTM:
             '#0097E6'   # Azul cielo
         ]
         
-        print("🧠 Motor Neural LSTM inicializado (PyTorch CPU)")
+        print("Motor Neural LSTM inicializado (PyTorch CPU)")
     
     def set_conector(self, conector):
         """Configura el conector de Odoo."""
@@ -332,7 +332,7 @@ class MotorNeuralLSTM:
             # Entrenar si es necesario
             train_result = None
             if entrenar or self.modelo is None:
-                print("🔄 Entrenando modelo LSTM...")
+                print("Entrenando modelo LSTM...")
                 train_result = self.entrenar_modelo()
                 if not train_result.get('exito'):
                     return PrediccionLSTM(

@@ -47,7 +47,7 @@ export default function LoginPage() {
           </div>
           <h1 className="text-3xl font-black text-gradient tracking-tight">ANDROMEDA</h1>
           <p className="text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-            AI ERP Assistant
+            Advanced Neural Data Resource for Operations, Management, and Enterprise Assistance
           </p>
         </div>
 

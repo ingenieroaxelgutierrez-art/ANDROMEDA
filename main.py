@@ -31,7 +31,16 @@ def iniciar_web() -> None:
     print("=" * 60)
     
     Config.crear_directorios()
-    
+
+    # Inicializar BD SaaS antes de levantar el servidor para que
+    # registrar_consulta y rotar_logs_antiguos funcionen desde el primer mensaje.
+    try:
+        from models.db_saas import inicializar_db
+        inicializar_db()
+        logger.info("BD SaaS lista")
+    except Exception as _e_db:
+        logger.warning("BD SaaS no disponible al inicio: %s", _e_db)
+
     from views.interfaz_v5 import OdooAIProV5, CSS_PRO_V5
     
     bot = OdooAIProV5()

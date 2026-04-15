@@ -141,18 +141,18 @@ class ConectorOllama:
         
         messages.append({"role": "user", "content": prompt})
         
-        # Preparar request con límite de RAM (~2GB máximo)
+        # Preparar request — balancear calidad vs recursos disponibles
         payload = {
             "model": modelo,
             "messages": messages,
             "stream": False,
             "options": {
                 "temperature": temperatura,
-                "num_predict": min(max_tokens, 512),  # Máximo 512 tokens
-                "num_ctx": 2048,        # Context window reducido (ahorra ~1GB RAM)
-                "num_thread": 4,        # Límite threads para evitar sobrecarga
-                "num_gpu": 0,           # Solo CPU (mejor control de RAM)
-                "num_batch": 128,       # Batch size pequeño
+                "num_predict": min(max_tokens, 2048),  # Hasta 2048 tokens (respuestas completas)
+                "num_ctx": 4096,        # Context window ampliado para diálogos largos
+                "num_thread": 4,        # Límite threads para no sobrecargar CPU
+                "num_gpu": 0,           # Solo CPU por defecto; Ollama auto-detecta GPU si está
+                "num_batch": 256,       # Batch más grande → mejor throughput
                 "low_vram": True        # Modo bajo consumo de VRAM
             }
         }
@@ -219,6 +219,7 @@ Responde con JSON cuando identifiques una acción:
 **Consultas:** consultar_ventas, consultar_pos, consultar_inventario, consultar_facturas, consultar_clientes
 **Análisis:** analisis_ventas, top_productos, top_clientes, analisis_pos, tendencia
 **Predicciones:** predecir_ventas, predecir_agotamiento, flujo_caja
+**Gráficas:** graficar_ventas, graficar_pos, graficar_inventario, graficar_clientes, graficar_finanzas, graficar_kpis, graficar_ventas_tienda — Usar cuando el usuario pida graficar, visualizar, gráfica, gráfico, chart, dibuja los datos, "grafica eso"
 **Auditoría:** auditoria_nocturna, semaforo_salud, analizar_churn, detectar_pagos_fantasma
 **Reportes:** generar_pdf, generar_excel
 **Manual:** consultar_manual (ÚNICAMENTE para preguntas sobre procedimientos paso-a-paso en Odoo, como "cómo crear una factura", "cómo cancelar una orden")
@@ -228,6 +229,9 @@ Responde con JSON cuando identifiques una acción:
 - Solo usa consultar_manual si el usuario pregunta explícitamente cómo REALIZAR un procedimiento en Odoo.
 - Si hay duda entre consulta de datos y manual, SIEMPRE elige la consulta de datos.
 - "Cómo van las ventas" = consultar_ventas o tendencia. NUNCA consultar_manual.
+- "grafica", "gráfica", "gráfico", "graficame", "visualiza", "chart", "dibuja" → SIEMPRE usar acción graficar_* correspondiente.
+- "grafica los datos", "grafica eso", "grafica la información" sin contexto específico → graficar_ventas (acción genérica de gráfica).
+- NUNCA mapear solicitudes de gráfica a auditoria ni a consulta de manual.
 
 ## FORMATO DE RESPUESTA
 Si detectas que el usuario pide una operación ejecutable, DEBES intentar devolver acción.
@@ -498,7 +502,17 @@ No mezcles varias acciones: elige la más útil para avanzar la solicitud del us
 
         # Patrones ordenados de más específico a más genérico
         patrones = [
-            # Predicciones/tendencia (antes de ventas genéricas)
+            # ── GRÁFICAS PRIMERO (mayor prioridad — evita que 'datos' dispare auditoría) ──
+            (['graficar tienda', 'grafica tienda', 'gráfica tienda', 'grafica por tienda', 'gráfica por tienda'], 'graficar_ventas_tienda'),
+            (['graficar ventas', 'grafica ventas', 'gráfica ventas', 'grafica de ventas', 'gráfica de ventas'], 'graficar_ventas'),
+            (['graficar pos', 'grafica pos', 'gráfica pos', 'graficar punto de venta'], 'graficar_pos'),
+            (['graficar inventario', 'grafica inventario', 'gráfica inventario', 'grafica de inventario'], 'graficar_inventario'),
+            (['graficar clientes', 'grafica clientes', 'gráfica clientes'], 'graficar_clientes'),
+            (['graficar finanzas', 'grafica finanzas', 'graficar cuentas', 'grafica financiero'], 'graficar_finanzas'),
+            (['graficar kpis', 'grafica kpis', 'grafica los kpis'], 'graficar_kpis'),
+            # Solicitud genérica de gráfica (ej: "grafica eso", "graficame", "grafica los datos")
+            (['grafica', 'gráfica', 'grafico', 'gráfico', 'graficame', 'graficar', 'visualiza', 'visualizar', 'chart', 'dibuja'], 'graficar_ventas'),
+            # ── Predicciones/tendencia (antes de ventas genéricas) ──
             (['tendencia', 'predicción', 'prediccion', 'forecast', 'pronóstico', 'pronostico'], 'tendencia'),
             (['predecir ventas', 'predecir demanda'], 'predecir_ventas'),
             # Análisis específicos
@@ -573,8 +587,8 @@ No mezcles varias acciones: elige la más útil para avanzar la solicitud del us
             modelo=self.modelo,
             system_prompt=self._get_system_prompt(),
             historial=self.historial[:-1],  # Excluir el mensaje actual
-            temperatura=0.5,  # Reducido para respuestas más rápidas y consistentes
-            max_tokens=1024   # Reducido para evitar timeout
+            temperatura=0.5,
+            max_tokens=2048  # Respuestas completas sin truncar
         )
         
         if not respuesta_llm.exito:

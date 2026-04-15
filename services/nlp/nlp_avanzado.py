@@ -1373,13 +1373,18 @@ class MotorNLPAvanzado:
         
         # ═══════════════════════════════════════════════════════════
         # PRIORIDAD 3: Sinónimos como fallback
+        # NO ejecutar si P2 ya identificó una intención BI avanzada
+        # (ej: "análisis 360" no debe sobreescribirse con "ventas_analisis")
         # ═══════════════════════════════════════════════════════════
-        if mejor_score < 0.3:
+        if mejor_score < 0.3 and mejor_match not in _INTENCIONES_BI_AVANZADAS:
             for palabra in mensaje.split():
                 categoria = self.sinonimos_inv.get(palabra)
                 if categoria:
                     for nombre, config in self.intenciones_map.items():
                         if categoria in nombre or categoria in str(config.get('triggers', [])):
+                            # No sobreescribir una intención específica con una genérica
+                            if nombre in _INTENCIONES_BI_AVANZADAS and mejor_match not in _INTENCIONES_BI_AVANZADAS:
+                                pass  # Preferir la específica
                             mejor_match = nombre
                             mejor_score = 0.5
                             break
@@ -1721,7 +1726,60 @@ class MotorNLPAvanzado:
             fecha_inicio = primer_dia.strftime('%Y-%m-%d')
             fecha_fin = ultimo_dia.strftime('%Y-%m-%d')
             periodo_desc = f'{nombre_mes.capitalize()} {año_num}'
-        
+
+        # ── Comparativa de DOS periodos: "marzo 2026 vs marzo 2025", "2025 vs 2024" ──
+        # Detectar AMBOS lados del vs para comparativas específicas
+        _patron_vs_meses = re.compile(
+            r'(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)'
+            r'\s*(?:de\s*)?(\d{4})?\s*(?:vs?\.?|versus|contra|comparado?\s*con)\s*'
+            r'(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)'
+            r'\s*(?:de\s*)?(\d{4})?',
+            re.IGNORECASE
+        )
+        _patron_vs_años = re.compile(
+            r'(\d{4})\s*(?:vs?\.?|versus|contra)\s*(\d{4})',
+            re.IGNORECASE
+        )
+
+        def _rango_mes(mes_num: int, año_num: int):
+            primer = datetime(año_num, mes_num, 1)
+            if mes_num == 12:
+                ultimo = datetime(año_num + 1, 1, 1) - timedelta(days=1)
+            else:
+                ultimo = datetime(año_num, mes_num + 1, 1) - timedelta(days=1)
+            return primer.strftime('%Y-%m-%d'), ultimo.strftime('%Y-%m-%d')
+
+        match_vs_m = _patron_vs_meses.search(mensaje_lower)
+        if match_vs_m:
+            mes_a_nom = match_vs_m.group(1).lower()
+            año_a = int(match_vs_m.group(2)) if match_vs_m.group(2) else hoy.year
+            mes_b_nom = match_vs_m.group(3).lower()
+            año_b = int(match_vs_m.group(4)) if match_vs_m.group(4) else hoy.year
+            ini_a, fin_a = _rango_mes(meses_nombres[mes_a_nom], año_a)
+            ini_b, fin_b = _rango_mes(meses_nombres[mes_b_nom], año_b)
+            return {
+                'fecha_inicio': ini_a, 'fecha_fin': fin_a,
+                'periodo': f'{mes_a_nom.capitalize()} {año_a}',
+                'fecha_inicio_a': ini_a, 'fecha_fin_a': fin_a,
+                'periodo_a': f'{mes_a_nom.capitalize()} {año_a}',
+                'fecha_inicio_b': ini_b, 'fecha_fin_b': fin_b,
+                'periodo_b': f'{mes_b_nom.capitalize()} {año_b}',
+            }
+
+        match_vs_y = _patron_vs_años.search(mensaje_lower)
+        if match_vs_y:
+            año_a = int(match_vs_y.group(1))
+            año_b = int(match_vs_y.group(2))
+            if 2000 <= año_a <= 2100 and 2000 <= año_b <= 2100:
+                return {
+                    'fecha_inicio': f'{año_a}-01-01', 'fecha_fin': f'{año_a}-12-31',
+                    'periodo': f'Año {año_a}',
+                    'fecha_inicio_a': f'{año_a}-01-01', 'fecha_fin_a': f'{año_a}-12-31',
+                    'periodo_a': f'Año {año_a}',
+                    'fecha_inicio_b': f'{año_b}-01-01', 'fecha_fin_b': f'{año_b}-12-31',
+                    'periodo_b': f'Año {año_b}',
+                }
+
         return {
             'fecha_inicio': fecha_inicio,
             'fecha_fin': fecha_fin,
@@ -1749,6 +1807,26 @@ class MotorNLPAvanzado:
                 parametros['dias_historico'] = n * 30
             else:
                 parametros['dias_historico'] = n
+
+        # ── Horizonte predicción: "para/próximos/a N días/semanas/meses/años" ──
+        # Maneja: "para 30 días", "próximos 30 días", "a 6 meses", "en 1 año"
+        _patron_horizonte = re.compile(
+            r'(?:para\s+(?:los?\s+)?|próximos?\s+|proximos?\s+|en\s+(?:los?\s+)?|a\s+(?:los?\s+)?)'  # prefijo
+            r'(\d+)\s*(d[ií]as?|semanas?|meses?|a[ñn]os?)',
+            re.IGNORECASE
+        )
+        match_hor = _patron_horizonte.search(mensaje)
+        if match_hor and 'limite' not in parametros:  # no sobreescribir top-N explícito
+            n_hor = int(match_hor.group(1))
+            unidad_hor = match_hor.group(2).lower()
+            if 'semana' in unidad_hor:
+                parametros['limite'] = n_hor * 7
+            elif 'mes' in unidad_hor:
+                parametros['limite'] = n_hor * 30
+            elif 'año' in unidad_hor or 'anio' in unidad_hor:
+                parametros['limite'] = n_hor * 365
+            else:  # días
+                parametros['limite'] = n_hor
 
         # ── Mayor / Menor que ──────────────────────────────────────────────────
         match = self.patron_mayor.search(mensaje)

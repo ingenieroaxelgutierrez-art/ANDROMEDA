@@ -5,14 +5,39 @@ import Image from "next/image";
 import { enviarMensaje, getMe, ApiError, MensajeChat } from "@/lib/api";
 import ChatBubble from "@/components/ChatBubble";
 
+const SESSION_KEY = "andromeda_chat_session_id";
+const HISTORY_KEY = "andromeda_chat_history";
+
 export default function ChatPage() {
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState<string>(() => {
+    if (typeof window === "undefined") return crypto.randomUUID();
+    const stored = sessionStorage.getItem(SESSION_KEY);
+    if (stored) return stored;
+    const id = crypto.randomUUID();
+    sessionStorage.setItem(SESSION_KEY, id);
+    return id;
+  });
   const [empresaId, setEmpresaId] = useState<string | null>(null);
-  const [mensajes, setMensajes] = useState<MensajeChat[]>([]);
+  const [mensajes, setMensajes] = useState<MensajeChat[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = sessionStorage.getItem(HISTORY_KEY);
+      return raw ? (JSON.parse(raw) as MensajeChat[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Persistir historial en sessionStorage cuando cambia
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(HISTORY_KEY, JSON.stringify(mensajes));
+    }
+  }, [mensajes]);
 
   // Cargar empresa_id del usuario al montar
   useEffect(() => {
@@ -39,7 +64,7 @@ export default function ChatPage() {
     setError(null);
 
     try {
-      const resp = await enviarMensaje(texto, sessionId, empresaId);
+      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined);
       // El servidor retorna el historial completo; lo usamos directamente
       setMensajes(resp.historial);
     } catch (err) {

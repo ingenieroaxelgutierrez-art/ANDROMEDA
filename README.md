@@ -1,7 +1,7 @@
 # ANDROMEDA — A PREDICTIVA EMPRESARIAL PARA ODOO
 # Advanced Neural Data Resource for Operations, Management & Enterprise Decision Analytics
 
-> **v10.0** · Fases 0–5 completadas · Post-lanzamiento activo · **695 tests** · Python 3.11 · FastAPI 0.133 · Next.js 14
+> **v 1.10.0** · Fases 0–5 completadas · Post-lanzamiento activo · **695 tests** · Python 3.11 · FastAPI 0.133 · Next.js 14
 
 ANDROMEDA es un agente conversacional de IA de propósito empresarial diseñado para conectarse directamente a instancias Odoo y responder consultas en lenguaje natural sobre datos de negocio en tiempo real. El sistema combina un pipeline NLP multi-capa, un motor de orquestación multi-agente, RAG con memoria vectorial persistente, ML/DL híbrido y una capa API REST con frontend React — todo ejecutado de forma local, sin dependencias de servicios externos.
 

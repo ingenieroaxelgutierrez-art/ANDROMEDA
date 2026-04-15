@@ -72,6 +72,26 @@ def procesar_chat(request: MensajeRequest, bot=Depends(get_bot)) -> RespuestaAPI
             respuesta = str(entry.get("content", ""))
             break
 
+    # ── Validar respuesta antes de enviar al cliente (evita alucinaciones) ────
+    try:
+        from utils.validador_respuestas import obtener_validador
+        validador = obtener_validador()
+        resultado_val = validador.validar(
+            respuesta=respuesta,
+            consulta_original=request.mensaje,
+            accion=_inferir_tipo_consulta(status or ""),
+            confianza_previa=1.0,
+        )
+        if resultado_val.accion_correctiva in ('reemplazada', 'rechazada') and resultado_val.respuesta_validada:
+            respuesta = resultado_val.respuesta_validada
+            # Actualizar el historial con la respuesta limpia
+            for entry in reversed(historial_actualizado):
+                if entry.get("role") == "assistant":
+                    entry["content"] = respuesta
+                    break
+    except Exception:
+        pass  # Validación no bloquea el flujo
+
     # ── Inferir tipo de consulta desde el status devuelto por el bot ─────────
     tipo_consulta = _inferir_tipo_consulta(status or "")
 
