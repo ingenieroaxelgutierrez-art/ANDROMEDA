@@ -239,6 +239,8 @@ class NormalizadorPrompt:
     def _limpiar_basico(self, texto: str) -> str:
         """Limpieza básica: whitespace, puntuación excesiva, emojis no útiles."""
         texto = texto.strip()
+        # Convertir snake_case a palabras (estructura_organizacional → estructura organizacional)
+        texto = re.sub(r'([a-zA-ZáéíóúüñÁÉÍÓÚÜÑ])_([a-zA-ZáéíóúüñÁÉÍÓÚÜÑ])', r'\1 \2', texto)
         # Colapsar múltiples espacios
         texto = re.sub(r'\s+', ' ', texto)
         # Remover puntuación excesiva pero mantener una instancia

@@ -1013,7 +1013,56 @@ class MotorNLPAvanzado:
                 'tipo_respuesta': 'auditoria'
             },
         }
-    
+
+        # Integrar patrones regex de INTENCIONES_EXTENDIDAS (v2)
+        self._integrar_intenciones_extendidas()
+
+    def _integrar_intenciones_extendidas(self):
+        """
+        Integra INTENCIONES_EXTENDIDAS al motor NLP:
+        - Compila sus patrones regex en self.patrones_extendidos (ordenados por prioridad)
+        - Agrega a intenciones_map las acciones no definidas aún, para que el lookup de
+          tipo_respuesta y modelo funcione cuando se resuelva la intención.
+        """
+        try:
+            from utils.intenciones_extendidas import INTENCIONES_EXTENDIDAS
+        except ImportError:
+            self.patrones_extendidos = []
+            return
+
+        self.patrones_extendidos = []
+
+        for nombre, config in INTENCIONES_EXTENDIDAS.items():
+            accion = config.get('accion', nombre)
+            prioridad = config.get('prioridad', 5)
+            patrones_compilados = []
+            for p in config.get('patrones', []):
+                try:
+                    patrones_compilados.append(re.compile(p, re.IGNORECASE))
+                except re.error:
+                    pass
+
+            if patrones_compilados:
+                self.patrones_extendidos.append({
+                    'nombre': nombre,
+                    'accion': accion,
+                    'prioridad': prioridad,
+                    'patrones': patrones_compilados,
+                })
+
+            # Agregar a intenciones_map si la acción aún no está mapeada
+            if nombre not in self.intenciones_map:
+                self.intenciones_map[nombre] = {
+                    'triggers': [],
+                    'modelo': None,
+                    'accion': accion,
+                    'tipo_respuesta': 'analisis',
+                }
+
+        # Ordenar de mayor a menor prioridad para que las más específicas ganen primero
+        self.patrones_extendidos.sort(key=lambda x: x['prioridad'], reverse=True)
+        logger.debug(f"INTENCIONES_EXTENDIDAS integradas: {len(self.patrones_extendidos)} grupos de patrones")
+
     def entender(self, mensaje: str) -> ConsultaEntendida:
         """
         Entiende un mensaje del usuario con análisis semántico inteligente.
@@ -1181,7 +1230,13 @@ class MotorNLPAvanzado:
         acciones_protegidas = acciones_auditoria + acciones_manual + acciones_bi
         
         # Si el cerebro tiene acción específica, usarla (excepto para acciones protegidas)
-        if intencion_cerebro and intencion_cerebro.confianza > 0.6 and accion not in acciones_protegidas:
+        # Condición adicional: solo sobrescribir si la confianza del cerebro supera
+        # a la del análisis tradicional, evitando que CerebroNLP descarte detecciones
+        # de alta confianza como las que vienen de INTENCIONES_EXTENDIDAS (0.92).
+        if (intencion_cerebro
+                and intencion_cerebro.confianza > 0.6
+                and accion not in acciones_protegidas
+                and intencion_cerebro.confianza > confianza + 0.1):
             accion = intencion_cerebro.accion_principal
             
             # Mapear tipo de consulta a tipo de respuesta
@@ -1333,7 +1388,18 @@ class MotorNLPAvanzado:
                             mejor_match = nombre
             if mejor_score > 0.25:
                 return (mejor_match, min(mejor_score + 0.3, 1.0))
-        
+
+        # ═══════════════════════════════════════════════════════════
+        # PRIORIDAD 0.5: Patrones regex de INTENCIONES_EXTENDIDAS
+        # Se evalúan antes que los triggers simples para capturar
+        # acciones v2 específicas (inventario_obsoleto, brecha_salarial, etc.)
+        # ═══════════════════════════════════════════════════════════
+        if hasattr(self, 'patrones_extendidos') and self.patrones_extendidos:
+            for item in self.patrones_extendidos:
+                for patron in item['patrones']:
+                    if patron.search(mensaje_lower):
+                        return (item['nombre'], 0.92)
+
         # ═══════════════════════════════════════════════════════════
         # PRIORIDAD 1: Intenciones de auditoría
         # ═══════════════════════════════════════════════════════════

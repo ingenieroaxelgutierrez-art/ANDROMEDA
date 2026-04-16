@@ -881,12 +881,12 @@ class AuditoriaCalidadDatos:
         try:
             # SMove acceso encapsulado via ConectorOdoo (ARQ-003)
             fecha_90 = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
-            # Universo: todos los movimientos completados en 90 días
-            total_universo = self.odoo.contar('account.move', [
+            # Universo: todos los movimientos de stock completados en 90 días
+            total_universo = self.odoo.contar('stock.move', [
                 ('state', '=', 'done'),
                 ('date', '>=', fecha_90),
             ])
-            movimientos = self.odoo.search_read('account.move', 
+            movimientos = self.odoo.search_read('stock.move',
                 [
                     ('state', '=', 'done'),
                     ('quantity_done', '=', 0),

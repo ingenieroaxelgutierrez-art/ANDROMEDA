@@ -30,22 +30,42 @@ class FormateadorRespuestas:
     def _formatear_prediccion_inventario(self, datos: Dict) -> str:
         resumen = datos.get('resumen', {})
         insights_lista = datos.get('insights', [])
-        insights = "\n".join(insights_lista) if insights_lista else "Sin insights disponibles"
-        return f"""## 🔮 Predicción de Agotamiento de Inventario
+        criticos = resumen.get('criticos', 0)
+        alertas_count = resumen.get('alertas', 0)
+        total_prod = resumen.get('total_productos', 0)
+        sin_mov = resumen.get('sin_movimiento', 0)
+
+        emoji_estado = "🔴" if criticos > 0 else "🟡" if alertas_count > 0 else "🟢"
+        pct_riesgo = ((criticos + alertas_count) / max(1, total_prod)) * 100
+
+        md = f"""## {emoji_estado} Predicción de Agotamiento de Inventario
+
+### Estado General: {emoji_estado} {pct_riesgo:.0f}% de productos en riesgo
 
 ### Resumen
 | Métrica | Valor |
 |---------|-------|
-| Total productos | **{resumen.get('total_productos', 0):,}** |
-| Críticos (<7 días) | **{resumen.get('criticos', 0)}** |
-| Alerta (7-14 días) | **{resumen.get('alertas', 0)}** |
-| Sin movimiento | **{resumen.get('sin_movimiento', 0)}** |
+| Total productos analizados | **{total_prod:,}** |
+| 🔴 Críticos (<7 días) | **{criticos}** |
+| 🟡 Alerta (7-14 días) | **{alertas_count}** |
+| ⏸️ Sin movimiento | **{sin_mov}** |
+"""
 
-### Insights
-{insights}
+        if criticos > 0:
+            md += f"\n> 🔴 **URGENTE**: {criticos} producto(s) se agotarán en menos de 7 días. Emitir órdenes de compra o trasladar stock de inmediato.\n"
+        if alertas_count > 0:
+            md += f"\n> 🟡 **Atención**: {alertas_count} producto(s) en zona de alerta (7-14 días). Iniciar proceso de reposición.\n"
+        if sin_mov > 0:
+            md += f"\n> ⏸️ **Sin movimiento**: {sin_mov} producto(s) sin ventas recientes. Evaluar si son obsoletos o requieren promoción.\n"
 
-### Productos Críticos
-_Ver tabla de datos para detalles_"""
+        if insights_lista:
+            md += "\n### Insights\n"
+            for insight in insights_lista:
+                md += f"- {insight}\n"
+
+        md += "\n### Productos Críticos\n_Ver tabla de datos para detalles de cada producto_"
+        md += "\n\n> 💡 *¿Quieres ver los montos de reposición, clasificación ABC o simular escenarios de demanda?*"
+        return md
 
     def _formatear_flujo_caja(self, datos: Dict) -> str:
         estado_emoji = '🟢' if datos.get('estado') == 'POSITIVO' else '🔴'
@@ -106,192 +126,478 @@ _Ver tabla de datos para detalles_"""
 
     def _formatear_estacionalidad(self, datos: Dict) -> str:
         insights_lista = datos.get('insights', [])
-        insights = "\n".join(insights_lista) if insights_lista else "Sin insights disponibles"
-
         recomendaciones_lista = datos.get('recomendaciones', [])
-        recomendaciones = "\n".join(recomendaciones_lista) if recomendaciones_lista else "Sin recomendaciones disponibles"
 
-        return f"""## Análisis de Estacionalidad
+        mejor_dia = datos.get('mejor_dia', 'N/A')
+        peor_dia = datos.get('peor_dia', 'N/A')
+        mejor_mes = datos.get('mejor_mes', 'N/A')
+        peor_mes = datos.get('peor_mes', 'N/A')
+
+        md = f"""## 📆 Análisis de Estacionalidad
 
 ### Patrones Identificados
+| Métrica | Valor |
+|---------|-------|
+| 🏆 Mejor día de la semana | **{mejor_dia}** |
+| 🔽 Peor día de la semana | {peor_dia} |
+| 🌟 Mejor mes del año | **{mejor_mes}** |
+| 🔽 Peor mes del año | {peor_mes} |
+"""
 
-| Mejor Día | Peor Día | Mejor Mes | Peor Mes |
-|-----------|----------|-----------|----------|
-| **{datos.get('mejor_dia', 'N/A')}** | {datos.get('peor_dia', 'N/A')} | **{datos.get('mejor_mes', 'N/A')}** | {datos.get('peor_mes', 'N/A')} |
+        if mejor_dia != 'N/A':
+            md += f"\n> 💡 **Oportunidad**: el {mejor_dia} es el día más fuerte. Concentrar campañas, personal y stock para ese día.\n"
+        if peor_dia != 'N/A':
+            md += f"> 🔍 **Para mejorar**: el {peor_dia} es el día más débil. Considerar promociones o descuentos para mover inventario ese día.\n"
 
-### Insights
-{insights}
+        if insights_lista:
+            md += "\n### 🔎 Insights\n"
+            for insight in insights_lista:
+                md += f"- {insight}\n"
 
-### Recomendaciones
-{recomendaciones}
+        if recomendaciones_lista:
+            md += "\n### ✅ Recomendaciones\n"
+            for rec in recomendaciones_lista:
+                md += f"- {rec}\n"
 
-_Ver tabla para detalle por día de la semana_"""
+        md += "\n_Ver tabla para detalle completo por día de la semana_"
+        md += "\n\n> 💡 *¿Quieres ver el análisis por hora, producto o sucursal?*"
+        return md
 
     def _formatear_comparativa(self, datos: Dict) -> str:
         actual = datos.get('periodo_actual', {})
         anterior = datos.get('periodo_anterior', {})
         var = datos.get('variacion_porcentaje', 0)
         emoji = '📈' if var > 0 else '📉' if var < 0 else '➡️'
+        color = '🟢' if var > 5 else '🔴' if var < -5 else '🟡'
 
         insights_lista = datos.get('insights', [])
-        insights = "\n".join(insights_lista) if insights_lista else "Sin insights disponibles"        
-        return f"""## Comparativa: {actual.get('nombre', '')} vs {anterior.get('nombre', '')}
+
+        # Interpretación en lenguaje claro
+        if var > 20:
+            interpretacion = f"🟢 **Crecimiento excepcional** (+{var:.1f}%): las ventas se dispararon. Identificar qué lo causó para replicarlo."
+        elif var > 5:
+            interpretacion = f"🟢 **Crecimiento positivo** (+{var:.1f}%): el período actual supera al anterior. Buen desempeño."
+        elif var > 0:
+            interpretacion = f"🟡 **Crecimiento leve** (+{var:.1f}%): mejora marginal. Monitorear si se mantiene la tendencia."
+        elif var == 0:
+            interpretacion = "➡️ **Sin cambio**: resultados idénticos. Verificar si es por factores estacionales."
+        elif var > -5:
+            interpretacion = f"🟡 **Caída leve** ({var:.1f}%): ligera disminución. Vigilar causas antes de que se profundice."
+        elif var > -20:
+            interpretacion = f"🔴 **Caída significativa** ({var:.1f}%): las ventas bajaron. Analizar causas: mercado, competencia, operaciones."
+        else:
+            interpretacion = f"🔴 **Caída crítica** ({var:.1f}%): disminución severa. Requiere plan de recuperación inmediato."
+
+        md = f"""## {emoji} Comparativa: {actual.get('nombre', '')} vs {anterior.get('nombre', '')}
 
 ### {actual.get('nombre', 'Período Actual')}
 | Métrica | Valor |
 |---------|-------|
 | Órdenes | **{actual.get('ordenes', 0):,}** |
 | Total | **{self._m}{actual.get('total', 0):,.2f}** |
+| Promedio por orden | **{self._m}{actual.get('promedio', actual.get('total', 0) / max(1, actual.get('ordenes', 1))):,.2f}** |
 
 ### {anterior.get('nombre', 'Período Anterior')}
 | Métrica | Valor |
 |---------|-------|
 | Órdenes | **{anterior.get('ordenes', 0):,}** |
 | Total | **{self._m}{anterior.get('total', 0):,.2f}** |
+| Promedio por orden | **{self._m}{anterior.get('promedio', anterior.get('total', 0) / max(1, anterior.get('ordenes', 1))):,.2f}** |
 
-### {emoji} Variación
+### {emoji} Variación {color}
 | Métrica | Valor |
 |---------|-------|
-| Porcentaje | **{var:+.1f}%** |
-| Absoluto | **{self._m}{datos.get('variacion_absoluta', 0):+,.2f}** |
+| Variación % | **{var:+.1f}%** |
+| Variación absoluta | **{self._m}{datos.get('variacion_absoluta', 0):+,.2f}** |
+| Diferencia en órdenes | **{actual.get('ordenes', 0) - anterior.get('ordenes', 0):+,}** |
 
-### Insights
-{insights}"""
+### Interpretación
+{interpretacion}
+"""
+        if insights_lista:
+            md += "\n### Insights Adicionales\n"
+            for insight in insights_lista:
+                md += f"- {insight}\n"
+
+        md += "\n> 💡 *¿Quieres ver el desglose por producto, vendedor o proyección para el siguiente período?*"
+        return md
 
     def _format_ventas(self, df, f_ini, f_fin) -> str:
-        if df.empty:
-            return f"No hay ventas entre {f_ini} y {f_fin}"
-        total = df['amount_total'].sum()
-        return f"""## Ventas | {f_ini} a {f_fin}
-
-| Métrica | Valor |
-|---------|-------|
-| Órdenes | **{len(df):,}** |
-| Total | **{self._m}{total:,.2f}** |
-| Promedio | **{self._m}{total/len(df):,.2f}** |"""
+        """Alias de _formato_ventas para compatibilidad."""
+        return self._formato_ventas(df, f_ini, f_fin)
 
     def _formatear_top_productos(self, datos: Dict, limite: int) -> str:
-        md = f"""## Top {limite} Productos Más Vendidos
+        productos = datos.get('productos', [])[:limite]
+        total_ingresos = datos.get('total_ingresos', 0)
+        total_unidades = datos.get('total_unidades', 0)
+        total_productos = datos.get('total_productos', 0)
 
+        md = f"""## 🏆 Top {limite} Productos Más Vendidos
+
+### Resumen General
 | Métrica | Valor |
 |---------|-------|
-| Productos únicos | **{datos.get('total_productos', 0):,}** |
-| Unidades vendidas | **{datos.get('total_unidades', 0):,.0f}** |
-| Ingresos | **{self._m}{datos.get('total_ingresos', 0):,.2f}** |
+| Productos únicos | **{total_productos:,}** |
+| Unidades vendidas (total) | **{total_unidades:,.0f}** |
+| Ingresos (total) | **{self._m}{total_ingresos:,.2f}** |
 
 ### Ranking
-| # | Producto | Unidades | Ingresos |
-|---|----------|----------|----------|
+| # | Producto | Unidades | Ingresos | % del Total |
+|---|----------|----------|----------|-------------|
 """
-        for i, p in enumerate(datos.get('productos', [])[:limite], 1):
+        ingresos_top = 0.0
+        for i, p in enumerate(productos, 1):
+            ing = p.get('price_subtotal', 0)
+            ingresos_top += ing
+            pct = (ing / total_ingresos * 100) if total_ingresos > 0 else 0
             nombre = str(p.get('producto', ''))[:35]
-            md += f"| {i} | {nombre} | {p.get('product_uom_qty', 0):,.0f} | {self._m}{p.get('price_subtotal', 0):,.2f} |\n"
-        
+            md += f"| {i} | {nombre} | {p.get('product_uom_qty', 0):,.0f} | {self._m}{ing:,.2f} | {pct:.1f}% |\n"
+
+        # Insight Pareto
+        if total_ingresos > 0 and len(productos) > 0:
+            pct_top_n = ingresos_top / total_ingresos * 100
+            md += f"\n### 📊 Insight Pareto\n"
+            md += f"Los top {len(productos)} productos generan el **{pct_top_n:.1f}%** de los ingresos totales.\n"
+            if pct_top_n > 80:
+                md += f"\n> 🔴 **Concentración alta**: {len(productos)} productos representan más del 80% de ingresos. Alta dependencia de pocos SKUs. Diversificar el catálogo reduce riesgo.\n"
+            elif pct_top_n > 60:
+                md += f"\n> 🟡 **Concentración moderada**: fortalecer los siguientes productos en el ranking puede mejorar la estabilidad de ingresos.\n"
+            else:
+                md += f"\n> 🟢 **Distribución saludable**: los ingresos están bien distribuidos entre el catálogo de productos.\n"
+
+        md += "\n> 💡 *¿Quieres ver la tendencia de ventas de un producto específico, márgenes o predicción de demanda?*"
         return md
 
     def _formatear_top_clientes(self, datos: Dict, limite: int) -> str:
-        md = f"## Top {limite} Clientes\n\n"
-        md += "| # | Cliente | Órdenes | Total |\n|---|---------|---------|-------|\n"
-        
-        for i, c in enumerate(datos.get('por_cliente', [])[:limite], 1):
-            md += f"| {i} | {str(c.get('cliente', ''))[:30]} | {c.get('count', 0)} | {self._m}{c.get('sum', 0):,.2f} |\n"
-        
+        clientes = datos.get('por_cliente', [])[:limite]
+        total_general = sum(c.get('sum', 0) for c in clientes)
+
+        md = f"## 🏆 Top {limite} Clientes\n\n"
+        md += "| # | Cliente | Órdenes | Total | % Participación |\n|---|---------|---------|-------|----------------|\n"
+
+        top3_sum = 0.0
+        for i, c in enumerate(clientes, 1):
+            monto = c.get('sum', 0)
+            pct = (monto / total_general * 100) if total_general > 0 else 0
+            if i <= 3:
+                top3_sum += monto
+            md += f"| {i} | {str(c.get('cliente', ''))[:30]} | {c.get('count', 0)} | {self._m}{monto:,.2f} | {pct:.1f}% |\n"
+
+        # Alertas de concentración
+        if total_general > 0 and len(clientes) >= 3:
+            pct_top3 = top3_sum / total_general * 100
+            md += f"\n### 📊 Análisis de Concentración\n"
+            md += f"Los top 3 clientes representan el **{pct_top3:.1f}%** del total.\n"
+            if pct_top3 > 70:
+                md += f"\n> 🔴 **Riesgo de concentración crítico**: 3 clientes generan más del 70% de los ingresos. Perder uno impactaría gravemente el negocio. Diversificar la base de clientes.\n"
+            elif pct_top3 > 50:
+                md += f"\n> 🟡 **Concentración moderada**: los top 3 representan {pct_top3:.0f}%. Evaluar estrategias de retención y captación de nuevos clientes.\n"
+            else:
+                md += f"\n> 🟢 **Base de clientes saludable**: buena distribución de ingresos. Bajo riesgo de dependencia.\n"
+
+        md += "\n> 💡 *¿Quieres ver el análisis de lealtad, clientes en riesgo de churn o RFM (Recencia, Frecuencia, Monto)?*"
         return md
 
     def _formatear_ventas_vendedor(self, datos: Dict) -> str:
-        md = "## Ventas por Vendedor\n\n"
-        md += "| # | Vendedor | Órdenes | Total |\n|---|----------|---------|-------|\n"
-        
-        for i, v in enumerate(datos.get('por_vendedor', [])[:15], 1):
-            md += f"| {i} | {str(v.get('vendedor', ''))[:25]} | {v.get('count', 0)} | {self._m}{v.get('sum', 0):,.2f} |\n"
-        
+        vendedores = datos.get('por_vendedor', [])[:15]
+        if not vendedores:
+            return "## Ventas por Vendedor\n\nNo hay datos disponibles."
+
+        total_general = sum(v.get('sum', 0) for v in vendedores)
+        promedio_general = total_general / len(vendedores) if vendedores else 0
+
+        md = "## 💼 Ventas por Vendedor\n\n"
+        md += "| # | Vendedor | Órdenes | Total | % del Equipo | vs Promedio |\n|---|----------|---------|-------|--------------|-------------|\n"
+
+        for i, v in enumerate(vendedores, 1):
+            monto = v.get('sum', 0)
+            pct = (monto / total_general * 100) if total_general > 0 else 0
+            vs_prom = ((monto - promedio_general) / promedio_general * 100) if promedio_general > 0 else 0
+            flecha = "🔼" if vs_prom > 10 else "🔽" if vs_prom < -10 else "➡️"
+            md += f"| {i} | {str(v.get('vendedor', ''))[:25]} | {v.get('count', 0)} | {self._m}{monto:,.2f} | {pct:.1f}% | {flecha} {vs_prom:+.1f}% |\n"
+
+        # Insights de desempeño
+        if len(vendedores) >= 2:
+            top_vend = vendedores[0]
+            bot_vend = vendedores[-1]
+            top_monto = top_vend.get('sum', 0)
+            bot_monto = bot_vend.get('sum', 0)
+            if bot_monto > 0:
+                brecha = (top_monto - bot_monto) / bot_monto * 100
+                md += f"\n### 📊 Análisis de Desempeño\n"
+                md += f"- **Promedio del equipo**: {self._m}{promedio_general:,.2f}\n"
+                md += f"- **Líder de ventas**: {str(top_vend.get('vendedor',''))[:25]} ({self._m}{top_monto:,.2f})\n"
+                md += f"- **Brecha líder vs último**: **{brecha:.0f}%** de diferencia\n"
+                if brecha > 300:
+                    md += f"\n> 🔴 **Desbalance alto en el equipo**: el vendedor líder supera al último por {brecha:.0f}%. Revisar asignación de territorios, capacitación o cuentas.\n"
+                elif brecha > 100:
+                    md += f"\n> 🟡 **Diferencia notable** entre vendedores. Compartir tácticas del líder puede elevar el desempeño general.\n"
+                else:
+                    md += f"\n> 🟢 **Equipo equilibrado**: baja dispersión de resultados. Buen rendimiento colectivo.\n"
+
+        md += "\n> 💡 *¿Quieres ver el rendimiento de un vendedor específico, cumplimiento de metas o comparativa por período?*"
         return md
 
     def _formato_ventas(self, df, f_ini, f_fin) -> str:
         if df.empty:
             return f"No hay ventas entre {f_ini} y {f_fin}"
         total = df['amount_total'].sum()
-        return f"""## Ventas | {f_ini} a {f_fin}
+        n = len(df)
+        promedio = total / n
+        maximo = df['amount_total'].max()
+
+        # Tendencia: comparar primera mitad vs segunda mitad
+        tendencia_txt = ""
+        try:
+            col_fecha = next((c for c in df.columns if 'date' in c.lower()), None)
+            if col_fecha:
+                import pandas as pd
+                fechas = pd.to_datetime(df[col_fecha], errors='coerce')
+                df_t = df.assign(_fecha=fechas, _monto=pd.to_numeric(df['amount_total'], errors='coerce')).dropna(subset=['_fecha', '_monto'])
+                df_t = df_t.sort_values('_fecha')
+                mitad = len(df_t) // 2
+                if mitad > 0:
+                    p1 = float(df_t['_monto'].iloc[:mitad].sum())
+                    p2 = float(df_t['_monto'].iloc[mitad:].sum())
+                    if p1 > 0:
+                        cambio = (p2 - p1) / p1 * 100
+                        flecha = "📈" if cambio > 5 else "📉" if cambio < -5 else "➡️"
+                        tendencia_txt = f"\n| Tendencia del período | **{flecha} {cambio:+.1f}%** (2ª mitad vs 1ª mitad) |"
+        except Exception:
+            pass
+
+        alertas = []
+        if n < 10:
+            alertas.append("🟡 **Pocos registros**: muestra pequeña, los promedios pueden no ser representativos.")
+        if total > 0:
+            top1_pct = float(df['amount_total'].nlargest(1).sum()) / total * 100
+            if top1_pct > 30:
+                alertas.append(f"🟡 **Concentración alta**: la mayor operación representa el {top1_pct:.1f}% del total. Dependencia de pocos pedidos grandes.")
+
+        md = f"""## Ventas | {f_ini} a {f_fin}
 
 | Métrica | Valor |
 |---------|-------|
-| Órdenes | **{len(df):,}** |
+| Órdenes | **{n:,}** |
 | Total | **{self._m}{total:,.2f}** |
-| Promedio | **{self._m}{total/len(df):,.2f}** |
+| Promedio por orden | **{self._m}{promedio:,.2f}** |
+| Mayor orden | **{self._m}{maximo:,.2f}** |{tendencia_txt}
+"""
+        if alertas:
+            md += "\n### ⚠️ Alertas\n"
+            for a in alertas:
+                md += f"- {a}\n"
 
-_Ver tabla de datos. ¿Quieres análisis, predicción o reporte?_"""
+        md += "\n> 💡 *¿Quieres ver el desglose por vendedor, producto, predicción o comparativa con el período anterior?*"
+        return md
 
     def _formato_pos(self, df, f_ini, f_fin) -> str:
         if df.empty:
             return f"No hay tickets POS entre {f_ini} y {f_fin}"
         total = df['amount_total'].sum() if 'amount_total' in df.columns else 0
-        return f"""## Punto de Venta | {f_ini} a {f_fin}
+        n = len(df)
+        promedio = total / n if n > 0 else 0
+
+        alertas = []
+        sesiones_abiertas = 0
+        if 'state' in df.columns:
+            sesiones_abiertas = int((df['state'] == 'opened').sum())
+            if sesiones_abiertas > 0:
+                alertas.append(f"🔴 **{sesiones_abiertas} sesión(es) abierta(s)**: cerrar para evitar inconsistencias en el reporte.")
+
+        negs = 0
+        if 'amount_total' in df.columns:
+            try:
+                import pandas as pd
+                negs = int((pd.to_numeric(df['amount_total'], errors='coerce') < 0).sum())
+                if negs > 0:
+                    alertas.append(f"🟡 **{negs} transacción(es) negativa(s)** (posibles devoluciones). Verificar en el cierre de caja.")
+            except Exception:
+                pass
+
+        if promedio < 50 and promedio > 0:
+            alertas.append(f"🟡 **Ticket promedio bajo** (${promedio:,.2f}): evaluar estrategias de upselling o combos.")
+
+        md = f"""## Punto de Venta | {f_ini} a {f_fin}
 
 | Métrica | Valor |
 |---------|-------|
-| Tickets | **{len(df):,}** |
-| Total | **{self._m}{total:,.2f}** |"""
+| Tickets | **{n:,}** |
+| Ventas totales | **{self._m}{total:,.2f}** |
+| Ticket promedio | **{self._m}{promedio:,.2f}** |
+"""
+        if alertas:
+            md += "\n### ⚠️ Alertas\n"
+            for a in alertas:
+                md += f"- {a}\n"
+
+        md += "\n> 💡 *¿Quieres ver productividad por cajero, métodos de pago, sesiones detalladas o comparativa de sucursales?*"
+        return md
 
     def _formatear_metodos_pago(self, datos: Dict) -> str:
-        md = "## Métodos de Pago\n\n"
+        metodos = datos.get('metodos', [])
+        total_general = sum(m.get('sum', 0) for m in metodos)
+        n_metodos = len(metodos)
+
+        md = "## 💳 Métodos de Pago\n\n"
         md += "| Método | Transacciones | Total | % |\n|--------|---------------|-------|---|\n"
-        
-        for m in datos.get('metodos', []):
+
+        for m in metodos:
             md += f"| {m.get('metodo', '')} | {m.get('count', 0)} | {self._m}{m.get('sum', 0):,.2f} | {m.get('porcentaje', 0):.1f}% |\n"
-        
+
+        if metodos:
+            top_metodo = max(metodos, key=lambda x: x.get('sum', 0))
+            top_pct = top_metodo.get('porcentaje', 0)
+            md += f"\n### Insights\n"
+            md += f"- **Método dominante**: {top_metodo.get('metodo', 'N/A')} ({top_pct:.1f}% del total)\n"
+            if n_metodos == 1:
+                md += "> 🟡 **Un solo método de pago**: si falla, no hay alternativa. Considerar activar métodos adicionales para no perder ventas.\n"
+            elif top_pct > 80:
+                md += f"> 🟡 **Alta concentración en {top_metodo.get('metodo', '')}**: si hay problemas con este método (fallas de terminal, etc.) el impacto en ventas sería muy alto.\n"
+            else:
+                md += f"> 🟢 **Buena diversidad de métodos de pago** ({n_metodos} opciones): el cliente tiene flexibilidad y los riesgos operativos son menores.\n"
+
+        md += "\n> 💡 *¿Quieres ver métodos de pago por sucursal, cajero o período específico?*"
         return md
 
     def _formatear_sesiones(self, datos: Dict) -> str:
-        md = "## Sesiones POS\n\n"
-        md += "| Sesión | Tickets | Total |\n|--------|---------|-------|\n"
-        
-        for s in datos.get('por_sesion', [])[:15]:
-            md += f"| {str(s.get('sesion', ''))[:30]} | {s.get('count', 0)} | {self._m}{s.get('sum', 0):,.2f} |\n"
-        
+        sesiones = datos.get('por_sesion', [])[:15]
+        total_general = sum(s.get('sum', 0) for s in sesiones)
+        abiertas = [s for s in sesiones if s.get('estado') == 'open' or s.get('state') == 'opened']
+
+        md = "## 🖥️ Sesiones POS\n\n"
+        md += "| Sesión | Tickets | Total | Estado |\n|--------|---------|-------|--------|\n"
+
+        for s in sesiones:
+            estado = s.get('estado', s.get('state', ''))
+            estado_emoji = "🔴 Abierta" if estado in ('open', 'opened') else "✅ Cerrada" if estado in ('closed', 'cerrada') else estado
+            md += f"| {str(s.get('sesion', ''))[:28]} | {s.get('count', 0)} | {self._m}{s.get('sum', 0):,.2f} | {estado_emoji} |\n"
+
+        if abiertas:
+            md += f"\n> 🔴 **{len(abiertas)} sesión(es) abierta(s)**: deben cerrarse para que los reportes financieros sean precisos y los cuadres de caja sean confiables.\n"
+        else:
+            md += f"\n> 🟢 **Todas las sesiones están cerradas**: los datos de este período son confiables para reportes.\n"
+
+        if total_general > 0 and sesiones:
+            promedio_sesion = total_general / len(sesiones)
+            md += f"\n### Indicadores\n- Venta promedio por sesión: **{self._m}{promedio_sesion:,.2f}**\n"
+
+        md += "\n> 💡 *¿Quieres ver el detalle de una sesión específica, productividad por cajero o comparativa de sucursales?*"
         return md
 
     def _formato_inventario(self, df) -> str:
         if df.empty:
             return "No hay datos de inventario"
         total = df['quantity'].sum() if 'quantity' in df.columns else 0
-        return f"""## Inventario
+        n = len(df)
+
+        alertas = []
+        try:
+            import pandas as pd
+            if 'quantity' in df.columns:
+                qty = pd.to_numeric(df['quantity'], errors='coerce').fillna(0)
+                negativos = int((qty < 0).sum())
+                ceros = int((qty == 0).sum())
+                criticos = int(((qty > 0) & (qty < 10)).sum())
+                if negativos > 0:
+                    alertas.append(f"🔴 **{negativos} producto(s) con stock negativo**. Revisar movimientos pendientes.")
+                if ceros > 0:
+                    alertas.append(f"🟡 **{ceros} producto(s) sin existencias** (stock = 0). Evaluar si requieren reposición.")
+                if criticos > 0:
+                    alertas.append(f"🟡 **{criticos} producto(s) con menos de 10 unidades**. Stock crítico.")
+        except Exception:
+            pass
+
+        md = f"""## Inventario
 
 | Métrica | Valor |
 |---------|-------|
-| Registros | **{len(df):,}** |
-| Unidades | **{total:,.0f}** |"""
+| Productos en catálogo | **{n:,}** |
+| Unidades totales | **{total:,.0f}** |
+"""
+        if alertas:
+            md += "\n### ⚠️ Alertas\n"
+            for a in alertas:
+                md += f"- {a}\n"
+        md += "\n> 💡 *¿Quieres ver rotación, productos críticos, predicción de agotamiento o clasificación ABC?*"
+        return md
 
     def _formatear_rotacion_inventario(self, datos: Dict) -> str:
         criticos = datos.get('criticos', [])
+        todos = datos.get('todos', [])
+        total_analizados = len(todos) if todos else len(criticos)
+
         filas = []
         for p in criticos[:10]:
+            dias = p.get('dias_stock', 0)
+            urgencia = "🔴" if dias < 3 else "🟡" if dias < 7 else "⏰"
             fila = (
-                f"| {p.get('nombre', '')[:30]} "
+                f"| {urgencia} {p.get('nombre', '')[:28]} "
                 f"| {p.get('vendido', 0):,.0f} "
                 f"| {p.get('qty_available', 0):,.0f} "
-                f"| {p.get('dias_stock', 0):.0f} |"
+                f"| {dias:.0f} |"
             )
             filas.append(fila)
 
         tabla_productos = "\n".join(filas) if filas else "| Sin datos | - | - | - |"
-        return f"""## Rotación de Inventario
+        n_urgentes = len([p for p in criticos if p.get('dias_stock', 99) < 3])
+        n_alerta = len([p for p in criticos if 3 <= p.get('dias_stock', 99) < 7])
+
+        md = f"""## 🔄 Rotación de Inventario
+
+### Estado de Stock
+| Nivel | Cantidad |
+|-------|----------|
+| 🔴 Urgente (<3 días) | **{n_urgentes}** |
+| 🟡 Alerta (3-7 días) | **{n_alerta}** |
+| Total con <7 días | **{len(criticos)}** |
+| Total analizados | **{total_analizados}** |
 
 ### Productos Críticos (< 7 días de stock)
 
-| Producto | Vendido/mes | Stock | Días Stock |
-|----------|-------------|-------|------------|
+| Estado | Producto | Vendido/mes | Stock | Días Stock |
+|--------|----------|-------------|-------|------------|
 {tabla_productos}
+"""
 
- **{len(criticos)}** productos con menos de 7 días de stock"""
+        if n_urgentes > 0:
+            md += f"\n> 🔴 **ACCIÓN INMEDIATA**: {n_urgentes} producto(s) con menos de 3 días de stock. Ordenar de reposición HOY.\n"
+        if n_alerta > 0:
+            md += f"\n> 🟡 **Iniciar proceso de compra**: {n_alerta} producto(s) entre 3 y 7 días. Emitir orden de compra esta semana.\n"
+        if len(criticos) == 0:
+            md += f"\n> 🟢 **Inventario saludable**: ningún producto con menos de 7 días de cobertura.\n"
+
+        md += "\n> 💡 *¿Quieres ver la clasificación ABC, valoración de inventario o predicción de agotamiento?*"
+        return md
 
     def _formatear_valoracion(self, datos: Dict) -> str:
-        return f"""## Valoración de Inventario
+        resumen = datos.get('resumen', {})
+        total_prod = resumen.get('total_productos', 0)
+        total_uds = resumen.get('total_unidades', 0)
+        valor = datos.get('valoracion', 0)
+
+        alertas = []
+        if datos.get('sin_costo', 0) > 0:
+            alertas.append(f"🟡 **{datos['sin_costo']} producto(s) sin costo configurado**: la valoración es parcial. Actualizar costos en Odoo para obtener cifras exactas.")
+        if total_uds > 0 and valor > 0:
+            valor_por_ud = valor / total_uds
+            alertas.append(f"💰 Costo promedio por unidad: **${valor_por_ud:,.2f}**")
+
+        md = f"""## 💲 Valoración de Inventario
 
 | Métrica | Valor |
 |---------|-------|
-| Total productos | **{datos.get('resumen', {}).get('total_productos', 0):,}** |
-| Unidades totales | **{datos.get('resumen', {}).get('total_unidades', 0):,.0f}** |
-| Valor estimado | **{self._m}{datos.get('valoracion', 0):,.2f}** |"""
+| Total productos | **{total_prod:,}** |
+| Unidades totales | **{total_uds:,.0f}** |
+| 💲 Valor estimado del inventario | **{self._m}{valor:,.2f}** |
+"""
+        if alertas:
+            md += "\n### ⚠️ Observaciones\n"
+            for a in alertas:
+                md += f"- {a}\n"
+
+        md += "\n> 💡 *El valor del inventario es clave para el balance general. ¿Quieres ver el desglose por categoría, almacén o clasificación ABC?*"
+        return md
     
     # ============================================================
     # FORMATEADORES ESPECIALIZADOS (CEREBRO ANDROMEDA)

@@ -871,10 +871,17 @@ class EjecutorAcciones:
                             orden='expected_revenue desc'
                         )
                         if datos is not None and not datos.empty:
-                            total_revenue = datos['expected_revenue'].sum() if 'expected_revenue' in datos.columns else 0
+                            total_revenue = float(datos['expected_revenue'].sum()) if 'expected_revenue' in datos.columns else 0
                             n = len(datos)
-                            respuesta = f"## Análisis CRM\n\n**{n}** oportunidades activas | Ingreso esperado total: **${total_revenue:,.2f}**\n\n"
-                            respuesta += "Ver tabla adjunta para detalle de oportunidades."
+                            datos['cliente'] = datos.get('partner_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '—')
+                            datos['etapa'] = datos.get('stage_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '—')
+                            datos['vendedor'] = datos.get('user_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '—')
+                            datos['ingreso'] = pd.to_numeric(datos.get('expected_revenue', 0), errors='coerce').fillna(0)
+                            datos['prob'] = pd.to_numeric(datos.get('probability', 0), errors='coerce').fillna(0)
+                            respuesta = f"## Pipeline CRM\n\n**{n} oportunidades activas** | Ingreso esperado total: **${total_revenue:,.2f}**\n\n"
+                            respuesta += "| Oportunidad | Cliente | Etapa | Ingreso esp. | % \n|---|---|---|---:|---:|\n"
+                            for _, r in datos.head(15).iterrows():
+                                respuesta += f"| {str(r.get('name',''))[:30]} | {str(r.get('cliente',''))[:25]} | {str(r.get('etapa',''))[:20]} | ${float(r.get('ingreso',0)):,.2f} | {float(r.get('prob',0)):.0f}% |\n"
                             df = datos
                         else:
                             respuesta = "No hay oportunidades CRM activas en el sistema."
@@ -896,11 +903,14 @@ class EjecutorAcciones:
                         orden='amount_total desc'
                     )
                     if datos is not None and not datos.empty:
-                        total = datos['amount_total'].sum() if 'amount_total' in datos.columns else 0
+                        total = float(datos['amount_total'].sum()) if 'amount_total' in datos.columns else 0
                         n = len(datos)
-                        respuesta = f"## Análisis de Compras\n\n**{n}** órdenes | Total: **${total:,.2f}**\n\n"
-                        respuesta += f"**Período:** {fecha_ini} → {fecha_fin}\n\n"
-                        respuesta += "Ver tabla adjunta para detalle de órdenes de compra."
+                        datos['proveedor'] = datos.get('partner_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '—')
+                        datos['monto'] = pd.to_numeric(datos.get('amount_total', 0), errors='coerce').fillna(0)
+                        respuesta = f"## Análisis de Compras\n\n**{n} órdenes** | Total: **${total:,.2f}** | Período: {fecha_ini} → {fecha_fin}\n\n"
+                        respuesta += "| Orden | Proveedor | Monto | Fecha | Estado |\n|---|---|---:|---|---|\n"
+                        for _, r in datos.head(15).iterrows():
+                            respuesta += f"| {str(r.get('name',''))[:15]} | {str(r.get('proveedor',''))[:25]} | ${float(r.get('monto',0)):,.2f} | {str(r.get('date_order',''))[:10]} | {str(r.get('state',''))} |\n"
                         df = datos
                     else:
                         respuesta = f"No hay órdenes de compra en el período {fecha_ini} - {fecha_fin}."
@@ -944,7 +954,52 @@ class EjecutorAcciones:
                     datos = self._bot.odoo.buscar(modelo, filtro, campos, limite=limite)
                     nombre_accion = accion.replace('_', ' ').title()
                     if datos is not None and not datos.empty:
-                        respuesta = f"## {nombre_accion}\n\n**{len(datos)}** registros encontrados.\n\nVer tabla adjunta."
+                        # Mostrar tabla real en lugar de "Ver tabla adjunta"
+                        if accion == 'departamentos':
+                            datos['manager'] = datos.get('manager_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '')
+                            datos['padre'] = datos.get('parent_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '—')
+                            respuesta = f"## Departamentos\n\n**{len(datos)} departamentos** activos en el sistema:\n\n"
+                            respuesta += "| Departamento | Responsable | Área padre |\n|---|---|---|\n"
+                            for _, r in datos.iterrows():
+                                respuesta += f"| {str(r.get('name',''))[:35]} | {str(r.get('manager',''))[:25] or '—'} | {str(r.get('padre',''))[:25]} |\n"
+                        elif accion == 'consultar_empleados':
+                            datos['depto'] = datos.get('department_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '—')
+                            datos['puesto'] = datos.get('job_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '—')
+                            por_dep = datos.groupby('depto').size().reset_index(name='n').sort_values('n', ascending=False)
+                            respuesta = f"## Empleados Activos\n\n**Total: {len(datos):,} empleados**\n\n"
+                            respuesta += "| Departamento | Empleados |\n|---|---:|\n"
+                            for _, r in por_dep.head(20).iterrows():
+                                respuesta += f"| {str(r['depto'])[:35]} | {int(r['n'])} |\n"
+                        elif accion == 'contratos':
+                            datos['empleado'] = datos.get('employee_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '—')
+                            datos['salario'] = pd.to_numeric(datos.get('wage', 0), errors='coerce').fillna(0)
+                            respuesta = f"## Contratos Activos\n\n**{len(datos)} contratos** en vigor\n\n"
+                            respuesta += "| Empleado | Puesto | Salario | Estado |\n|---|---|---:|---|\n"
+                            for _, r in datos.head(20).iterrows():
+                                respuesta += f"| {str(r.get('empleado',''))[:30]} | {str(r.get('job_id',''))[:20] if not isinstance(r.get('job_id',''), list) else str(r.get('job_id',['',''])[1])[:20]} | ${float(r.get('salario',0)):,.2f} | {str(r.get('state',''))} |\n"
+                        elif accion == 'nomina':
+                            datos['empleado'] = datos.get('employee_id', pd.Series()).apply(lambda x: x[1] if isinstance(x, (list, tuple)) else '—')
+                            datos['neto'] = pd.to_numeric(datos.get('net_wage', 0), errors='coerce').fillna(0)
+                            total_nom = float(datos['neto'].sum())
+                            respuesta = f"## Nómina\n\n**{len(datos)} recibos** | **Total neto: ${total_nom:,.2f}**\n\n"
+                            respuesta += "| Empleado | Período | Neto |\n|---|---|---:|\n"
+                            for _, r in datos.sort_values('neto', ascending=False).head(15).iterrows():
+                                respuesta += f"| {str(r.get('empleado',''))[:30]} | {str(r.get('date_from',''))[:7]} | ${float(r.get('neto',0)):,.2f} |\n"
+                        else:
+                            respuesta = f"## {nombre_accion}\n\n**{len(datos)}** registros encontrados.\n\n"
+                            # Mostrar primeras columnas como tabla
+                            cols = [c for c in datos.columns if c not in ('id', '__last_update')][:4]
+                            if cols:
+                                respuesta += "| " + " | ".join(str(c).replace('_',' ').title() for c in cols) + " |\n"
+                                respuesta += "|" + "---|" * len(cols) + "\n"
+                                for _, r in datos.head(15).iterrows():
+                                    vals = []
+                                    for c in cols:
+                                        v = r[c]
+                                        if isinstance(v, (list, tuple)):
+                                            v = v[1] if len(v) > 1 else v[0]
+                                        vals.append(str(v)[:30])
+                                    respuesta += "| " + " | ".join(vals) + " |\n"
                         df = datos
                     else:
                         respuesta = f"No se encontraron datos de **{nombre_accion}** en el sistema."
