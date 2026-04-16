@@ -51,12 +51,23 @@ INTENCIONES_EXTENDIDAS = {
             r'(cómo|como)\s*(va|van|está|estan)\s*(las?)?\s*ventas?',
             r'(evolución|evolucion)\s*(de|del)',
             r'(histor|histórico|histórial)\s*(de)?\s*ventas?',
-            r'(proyección|proyeccion|forecast)\s*(de)?\s*ventas?',
         ],
         'prioridad': 11,
         'accion': 'tendencia'
     },
-    
+
+    'proyeccion_ventas': {
+        'patrones': [
+            r'(proyecci[oó]n|proyectar|forecast)\s*(de)?\s*ventas?',
+            r'(ventas?|ingresos?)\s*(para\s*)?(los?\s*pr[oó]ximos?|siguientes?|en\s*los?)\s*\d*\s*(d[ií]as?|semanas?|meses?)',
+            r'(cu[aá]nto\s*(se\s*va\s*a|vamos?\s*a)\s*vender|predicci[oó]n\s*de\s*ventas?)',
+            r'(estima(r|ci[oó]n)|anticipa(r|ci[oó]n))\s*(de)?\s*(ventas?|ingresos?)',
+            r'(gr[aá]fica?\s*)?(la\s*)?(proyecci[oó]n|forecast|predicci[oó]n)\s*(de\s*ventas?)?\s*(para\s*)?(pr[oó]ximos?)',
+        ],
+        'prioridad': 13,
+        'accion': 'proyeccion_ventas'
+    },
+
     'ventas_por_vendedor': {
         'patrones': [
             r'ventas?\s*(por|de)\s*(cada|los?)?\s*vendedor(es)?',
@@ -959,8 +970,669 @@ INTENCIONES_EXTENDIDAS = {
             r'(cu[aá]ntos?\s*d[ií]as?\s*de\s*vacaciones?)\s*(quedan?|tienen?|faltan?)',
             r'(qui[eé]n|quienes?)\s*(no\s*ha\s*tomado|tiene)\s*vacaciones?',
         ],
-        'prioridad': 10,
+        'prioridad': 12,
         'accion': 'vacaciones_pendientes'
+    },
+
+    # ─── VENTAS v2 ────────────────────────────────────────────────────────────
+
+    'meta_cumplimiento': {
+        'patrones': [
+            r'(cumplimiento|logro|avance)\s*(de\s*)?(meta|objetivo|cuota)',
+            r'(meta|objetivo|cuota)\s*(de\s*ventas?)?\s*(cumplida?|alcanzada?|lograda?)',
+            r'cu[aá]nto\s*(del?\s*)?(objetivo|meta|cuota)\s*(se\s*ha?\s*)?(cumplido|logrado|alcanzado)',
+            r'(porcentaje|%)?\s*(de\s*)?(avance|cumplimiento)\s*(del?\s*)?(objetivo|meta)',
+        ],
+        'prioridad': 11,
+        'accion': 'meta_cumplimiento'
+    },
+
+    'ventas_por_hora': {
+        'patrones': [
+            r'(ventas?|ingresos?)\s*por\s*hora',
+            r'(a\s*qu[eé]\s*hora|en\s*qu[eé]\s*horario)\s*(se\s*vende?\s*m[aá]s|hay\s*m[aá]s\s*ventas?)',
+            r'(pico|hora\s*pico|mejor\s*hora|peor\s*hora)\s*(de\s*ventas?|de\s*afluencia)',
+            r'distribuci[oó]n\s*(de\s*ventas?)?\s*por\s*hora',
+        ],
+        'prioridad': 11,
+        'accion': 'ventas_por_hora'
+    },
+
+    'ventas_vs_anterior': {
+        'patrones': [
+            r'(ventas?|ingresos?)\s*(vs\.?|versus|comparad[ao]s?\s*a?l?)\s*(periodo|mes|a[nñ]o|semana)?\s*anterior',
+            r'(crecimiento|variaci[oó]n|cambio)\s*(en\s*ventas?|de\s*ventas?)',
+            r'(cu[aá]nto\s*(crecieron?|cayeron?|bajaron?|subieron?))\s*las?\s*ventas?',
+            r'(m[aá]s|menos)\s*ventas?\s*(que\s*el)?\s*(mes|a[nñ]o|periodo)\s*pasado',
+        ],
+        'prioridad': 10,
+        'accion': 'ventas_vs_anterior'
+    },
+
+    # ─── INVENTARIO v2 ────────────────────────────────────────────────────────
+
+    'costo_almacenamiento': {
+        'patrones': [
+            r'(costo|coste)\s*(de\s*)?(almacenamiento|bodega|almac[eé]n|warehousing)',
+            r'(cu[aá]nto\s*cuesta|cuestan?)\s*(guardar|almacenar|tener\s*en\s*bodega)',
+            r'gasto\s*de\s*(bodega|almac[eé]n|almacenamiento)',
+        ],
+        'prioridad': 11,
+        'accion': 'costo_almacenamiento'
+    },
+
+    'trazabilidad_lote': {
+        'patrones': [
+            r'(trazabilidad|rastrear|seguimiento)\s*(de\s*)?(lote|lot[es]?|n[uú]mero\s*de\s*lote)',
+            r'(lote|n[uú]mero\s*lote|lot)\s*(n[uú]mero|#)?\s*\w*',
+            r'(d[oó]nde\s*(est[aá]|fueron?)|en\s*qu[eé])\s*(almac[eé]n|bodega|ubicaci[oó]n)\s*(est[aá]|se\s*encuentra)\s*(el\s*lote|lote)',
+        ],
+        'prioridad': 11,
+        'accion': 'trazabilidad_lote'
+    },
+
+    'inventario_por_categoria': {
+        'patrones': [
+            r'(inventario|stock|existencias?)\s*por\s*(categor[ií]a|familia|tipo)',
+            r'(existencias?|productos?)\s*(de\s*la\s*categor[ií]a|en\s*la\s*categor[ií]a)',
+            r'(desglose|detalle|resumen)\s*(de\s*inventario|de\s*stock)\s*por\s*categor[ií]a',
+        ],
+        'prioridad': 10,
+        'accion': 'inventario_por_categoria'
+    },
+
+    'transferencias_pendientes': {
+        'patrones': [
+            r'(transferencias?|traspasos?)\s*pendientes?',
+            r'(movimientos?\s*de\s*stock|transferencias?\s*de\s*inventario)\s*pendientes?',
+            r'(qu[eé]|cu[aá]ntas?)\s*(transferencias?|traspasos?)\s*(no\s*(se\s*han?\s*)?(procesado|completado|recibido))',
+        ],
+        'prioridad': 11,
+        'accion': 'transferencias_pendientes'
+    },
+
+    'inventario_valorizado_categoria': {
+        'patrones': [
+            r'(valor|valorizaci[oó]n)\s*(del?\s*inventario|de\s*stock)\s*por\s*(categor[ií]a|familia)',
+            r'(inventario\s*valorizado|stock\s*valorizado)\s*por\s*(categor[ií]a|familia)',
+            r'(cu[aá]nto\s*vale|valor\s*total)\s*(el|del?)\s*(inventario|stock)\s*(por\s*categor[ií]a|de\s*(cada|por)\s*categor[ií]a)',
+        ],
+        'prioridad': 11,
+        'accion': 'inventario_valorizado_categoria'
+    },
+
+    'inventario_por_almacen': {
+        'patrones': [
+            r'(inventario|stock|existencias?)\s*por\s*(almac[eé]n|bodega|ubicaci[oó]n)',
+            r'(cu[aá]nto\s*(hay|tenemos?|existe)\s*en\s*(cada|el)?\s*(almac[eé]n|bodega))',
+            r'(desglose|distribuci[oó]n|resumen)\s*(de\s*(inventario|stock))\s*por\s*(almac[eé]n|bodega)',
+            r'(inventario\s*por\s*sucursal|stock\s*por\s*sucursal)',
+            r'(qu[eé]\s*tiene[n]?\s*en\s*)(almac[eé]n|bodega)',
+        ],
+        'prioridad': 12,
+        'accion': 'inventario_por_almacen'
+    },
+
+    'inventario_por_empresa': {
+        'patrones': [
+            r'(inventario|stock|existencias?)\s*por\s*(empresa|compa[ñn][ií]a)',
+            r'(cu[aá]nto\s*(hay|tenemos?|existe)\s*en\s*(cada|la)\s*(empresa|compa[ñn][ií]a))',
+            r'(desglose|distribuci[oó]n|resumen)\s*(de\s*(inventario|stock))\s*por\s*(empresa|compa[ñn][ií]a)',
+            r'(inventario\s*por\s*empresa|stock\s*por\s*empresa)',
+        ],
+        'prioridad': 12,
+        'accion': 'inventario_por_empresa'
+    },
+
+    'comparar_stock_fisico_sistema': {
+        'patrones': [
+            r'(stock|inventario)\s*(f[ií]sico|real)\s*(vs\.?|versus|comparado\s*con)\s*(sistema|odoo)',
+            r'(diferencias?|discrepancias?)\s*(entre\s*)?(inventario|stock)\s*(f[ií]sico|real)\s*(y\s*el?\s*sistema)?',
+            r'(comparar|reconciliar)\s*(inventario|stock)\s*(f[ií]sico|del?\s*conteo)',
+            r'(conteo\s*f[ií]sico|inventario\s*f[ií]sico)\s*(vs\.?|contra)',
+        ],
+        'prioridad': 12,
+        'accion': 'comparar_stock_fisico_sistema'
+    },
+
+    # ─── FINANZAS v2 ──────────────────────────────────────────────────────────
+
+    'notas_credito': {
+        'patrones': [
+            r'(notas?\s*de?\s*cr[eé]dito|nota\s*cr[eé]dito)',
+            r'(cu[aá]ntas?|listado\s*de|ver)\s*notas?\s*(de\s*)?cr[eé]dito',
+            r'(abono|descuento|devoluci[oó]n)\s*(en\s*)?factura',
+        ],
+        'prioridad': 11,
+        'accion': 'notas_credito'
+    },
+
+    'impuestos_resumen': {
+        'patrones': [
+            r'(resumen\s*de\s*impuestos?|declaraci[oó]n\s*de\s*impuestos?)',
+            r'(iva|isr|impuestos?)\s*(del?\s*periodo|del?\s*mes|del?\s*a[nñ]o|a\s*pagar|retenido)',
+            r'(cu[aá]nto\s*(es|debo|pago|pagamos?)\s*(de\s*)?(iva|isr|impuesto))',
+            r'(reporte|c[aá]lculo)\s*(fiscal|de\s*impuestos?)',
+        ],
+        'prioridad': 11,
+        'accion': 'impuestos_resumen'
+    },
+
+    'margen_operativo': {
+        'patrones': [
+            r'(margen\s*operativo|margen\s*de\s*operaci[oó]n|utilidad\s*operativa)',
+            r'(ebitda|ebit|resultado\s*operativo)',
+            r'(beneficio|ganancia)\s*operativ[ao]',
+        ],
+        'prioridad': 11,
+        'accion': 'margen_operativo'
+    },
+
+    'razon_liquidez': {
+        'patrones': [
+            r'(raz[oó]n|ratio|[ií]ndice)\s*(de\s*)?liquidez',
+            r'(current\s*ratio|quick\s*ratio|acid\s*test)',
+            r'(capacidad\s*de\s*pago|liquidez\s*de\s*la\s*empresa)',
+            r'(activo|pasivo)\s*circulante',
+        ],
+        'prioridad': 11,
+        'accion': 'razon_liquidez'
+    },
+
+    'capital_trabajo': {
+        'patrones': [
+            r'(capital\s*de\s*trabajo|capital\s*circulante|working\s*capital)',
+            r'(necesidades?\s*de\s*capital|capital\s*operativo)',
+            r'(activos?\s*corrientes?\s*menos\s*pasivos?\s*corrientes?)',
+        ],
+        'prioridad': 11,
+        'accion': 'capital_trabajo'
+    },
+
+    'pagos_pendientes_aplicar': {
+        'patrones': [
+            r'(pagos?\s*(pendientes?\s*de\s*aplicar|sin\s*aplicar|no\s*aplicados?))',
+            r'(abonos?\s*(pendientes?\s*de\s*aplicar|sin\s*aplicar))',
+            r'(pagos?\s*sin\s*conciliar|pagos?\s*sin\s*asignar)',
+        ],
+        'prioridad': 12,
+        'accion': 'pagos_pendientes_aplicar'
+    },
+
+    'estado_cuenta_proveedor': {
+        'patrones': [
+            r'(estado\s*de\s*cuenta|saldo|balance)\s*(del?\s*)?(proveedor|supplier)',
+            r'(cu[aá]nto\s*(le\s*debemos?|adeudamos?)\s*a(l?\s*proveedor)?)',
+            r'(cuenta\s*corriente|historial\s*de\s*pagos?)\s*(del?\s*proveedor)',
+        ],
+        'prioridad': 11,
+        'accion': 'estado_cuenta_proveedor'
+    },
+
+    # ─── CRM v2 ───────────────────────────────────────────────────────────────
+
+    'conversion_leads': {
+        'patrones': [
+            r'(conversi[oó]n|tasa\s*de\s*conversi[oó]n)\s*(de\s*leads?|de\s*prospectos?)',
+            r'(leads?\s*convertidos?|prospectos?\s*cerrados?)',
+            r'(cu[aá]ntos?\s*leads?\s*(se\s*)?(convirtieron?|cerraron?|se\s*volvieron?\s*clientes?))',
+            r'(eficiencia|efectividad)\s*(de\s*(conversi[oó]n|ventas?|cierre))',
+        ],
+        'prioridad': 13,
+        'accion': 'conversion_leads'
+    },
+
+    'actividades_pendientes': {
+        'patrones': [
+            r'(actividades?\s*pendientes?|tareas?\s*pendientes?)\s*(crm|de\s*seguimiento|de\s*ventas?)?',
+            r'(llamadas?|correos?|reuniones?|visitas?)\s*pendientes?',
+            r'(qu[eé]\s*(actividades?|tareas?|acciones?)\s*(tengo|hay)\s*(pendientes?|por\s*hacer))',
+        ],
+        'prioridad': 10,
+        'accion': 'actividades_pendientes'
+    },
+
+    'tiempo_cierre_promedio': {
+        'patrones': [
+            r'(tiempo|d[ií]as?|semanas?)\s*(promedio\s*)?(de\s*)?(cierre|ciclo\s*de\s*venta)',
+            r'(ciclo\s*de\s*venta|sales\s*cycle)',
+            r'(cu[aá]nto\s*(tarda|demora|toman?))\s*(en\s*)?(cerrar|vender)',
+        ],
+        'prioridad': 11,
+        'accion': 'tiempo_cierre_promedio'
+    },
+
+    'leads_por_origen': {
+        'patrones': [
+            r'(leads?|prospectos?)\s*por\s*(origen|fuente|canal|source)',
+            r'(de\s*d[oó]nde\s*(vienen?|provienen?|llegan?))\s*(los?\s*leads?|prospectos?)',
+            r'(fuente|origen|canal)\s*(de\s*leads?|de\s*prospectos?|de\s*captaci[oó]n)',
+        ],
+        'prioridad': 11,
+        'accion': 'leads_por_origen'
+    },
+
+    'clientes_por_etapa': {
+        'patrones': [
+            r'(clientes?|oportunidades?)\s*por\s*(etapa|fase|stage)',
+            r'(pipeline|embudo\s*de\s*ventas?)\s*(por\s*etapa)?',
+            r'(en\s*qu[eé]\s*etapa\s*(est[aá]n?|hay|tengo))\s*(los?\s*clientes?|las?\s*oportunidades?)',
+        ],
+        'prioridad': 10,
+        'accion': 'clientes_por_etapa'
+    },
+
+    'reactivacion_clientes': {
+        'patrones': [
+            r'(reactivar|recuperar)\s*(clientes?|cuentas?)',
+            r'(clientes?\s*(inactivos?|perdidos?|dormidos?|que\s*no\s*(compran?|han\s*comprado)))',
+            r'(cu[aá]ntos?\s*clientes?\s*(no\s*(han\s*comprado|compraron))\s*(en\s*\d+\s*(d[ií]as?|meses?|a[nñ]os?)))',
+        ],
+        'prioridad': 11,
+        'accion': 'reactivacion_clientes'
+    },
+
+    # ─── COMPRAS v2 ───────────────────────────────────────────────────────────
+
+    'comparativa_precios': {
+        'patrones': [
+            r'(comparar|comparativa|cotizaci[oó]n\s*comparada?)\s*(de\s*precios?|entre\s*proveedores?)',
+            r'(mejor\s*precio|precio\s*m[aá]s\s*bajo|proveedor\s*m[aá]s\s*barato)',
+            r'(qu[eé]\s*proveedor\s*(ofrece|tiene|da)\s*mejor\s*precio)',
+            r'(an[aá]lisis|comparaci[oó]n)\s*de\s*precios?\s*de\s*proveedores?',
+        ],
+        'prioridad': 11,
+        'accion': 'comparativa_precios'
+    },
+
+    'cumplimiento_entregas': {
+        'patrones': [
+            r'(cumplimiento|puntualidad)\s*(de\s*)?(entregas?|pedidos?)',
+            r'(entregas?\s*(a\s*tiempo|puntual(es)?|tard[ií]as?))',
+            r'(proveedor(es)?\s*(que\s*)?(entrega[n]?\s*tarde|cumple[n]?\s*con\s*fechas?))',
+        ],
+        'prioridad': 11,
+        'accion': 'cumplimiento_entregas'
+    },
+
+    'compras_por_categoria': {
+        'patrones': [
+            r'(compras?|gastos?\s*de\s*compras?)\s*por\s*(categor[ií]a|familia|tipo)',
+            r'(desglose|detalle|resumen)\s*de\s*compras?\s*por\s*(categor[ií]a|familia)',
+        ],
+        'prioridad': 10,
+        'accion': 'compras_por_categoria'
+    },
+
+    'compras_recurrentes': {
+        'patrones': [
+            r'(compras?\s*recurrentes?|[oó]rdenes?\s*repetidas?|pedidos?\s*frecuentes?)',
+            r'(productos?\s*(que\s*siempre|que\s*frecuentemente)\s*(compramos?|pedimos?))',
+            r'(frecuencia\s*de\s*compra|periodicidad\s*de\s*compras?)',
+        ],
+        'prioridad': 10,
+        'accion': 'compras_recurrentes'
+    },
+
+    'ahorro_potencial': {
+        'patrones': [
+            r'(ahorro\s*potencial|oportunidades?\s*de\s*ahorro)',
+            r'(reducir|bajar|optimizar)\s*(costos?\s*de\s*compras?|gasto\s*en\s*compras?)',
+            r'(d[oó]nde\s*(podemos?|se\s*puede)\s*(ahorrar|reducir\s*costos?))',
+        ],
+        'prioridad': 11,
+        'accion': 'ahorro_potencial'
+    },
+
+    'compras_urgentes': {
+        'patrones': [
+            r'(compras?\s*urgentes?|[oó]rdenes?\s*urgentes?|pedidos?\s*(urgentes?|de\s*emergencia))',
+            r'(qu[eé]\s*(hay|tenemos?)\s*(que\s*comprar|de\s*comprar)\s*(urgente|ya|r[aá]pido))',
+        ],
+        'prioridad': 12,
+        'accion': 'compras_urgentes'
+    },
+
+    'gasto_por_departamento': {
+        'patrones': [
+            r'(gasto|compras?|presupuesto)\s*por\s*(departamento|[aá]rea|secci[oó]n)',
+            r'(cu[aá]nto\s*(gasta|compra)\s*(cada|el)?\s*departamento)',
+            r'(desglose|distribuci[oó]n)\s*(de\s*(gastos?|compras?))\s*por\s*departamento',
+        ],
+        'prioridad': 10,
+        'accion': 'gasto_por_departamento'
+    },
+
+    # ─── PDV v2 ───────────────────────────────────────────────────────────────
+
+    'devoluciones_pos': {
+        'patrones': [
+            r'(devoluciones?|reembolsos?|refund)\s*(en\s*caja|pos|punto\s*de\s*venta)',
+            r'(productos?\s*devueltos?)\s*(en\s*caja|en\s*pos)',
+            r'(cu[aá]ntas?\s*devoluciones?)\s*(hay|hubo|se\s*hicieron?)\s*(en\s*(pos|caja))?',
+        ],
+        'prioridad': 11,
+        'accion': 'devoluciones_pos'
+    },
+
+    'descuentos_por_tienda': {
+        'patrones': [
+            r'descuentos?\s*(realizados?|aplicados?|otorgados?)?\s*por\s*(tiendas?|sucursales?|locales?)',
+            r'descuentos?\s*(realizados?|aplicados?|dados?)\s*(en\s*)?(tiendas?|sucursales?)',
+            r'(p[eé]rdida|impacto|efecto)\s*(de)?\s*utilidad\s*(por|de|en)\s*(descuentos?|promociones?)',
+            r'descuentos?\s*(y|,)\s*(p[eé]rdida|impacto|efecto)\s*(de)?\s*utilidad',
+            r'(cu[aá]nto\s*(se\s*perdi[oó]|perdimos?))\s*(en|por)\s*descuentos?',
+            r'(resumen|reporte|an[aá]lisis)\s*(de)?\s*descuentos?\s*(por|en)\s*(tiendas?|sucursales?)',
+        ],
+        'prioridad': 15,
+        'accion': 'descuentos_por_tienda'
+    },
+
+    'descuentos_pos': {
+        'patrones': [
+            r'(descuentos?|promociones?)\s*(en\s*caja|pos|punto\s*de\s*venta|aplicados?\s*en\s*pos)',
+            r'(cu[aá]nto\s*(se\s*descont[oó]|se\s*descontaron?|se\s*dio\s*de\s*descuento))\s*(en\s*(caja|pos))?',
+        ],
+        'prioridad': 11,
+        'accion': 'descuentos_pos'
+    },
+
+    'ventas_diarias_por_tienda': {
+        'patrones': [
+            r'ventas?\s*(diarias?|por\s*d[ií]a)\s*(por\s*)?(tienda|sucursal|local|pos)',
+            r'(tienda|sucursal|local|pos)\s*(y\s*)?(gr[aá]fica?|comportamiento|evoluci[oó]n)\s*(diario|por\s*d[ií]a)',
+            r'comportamiento\s*(diario|por\s*d[ií]a)\s*(por\s*)?(tienda|sucursal|pos)',
+            r'gr[aá]fica?\s*(el?\s*)?(comportamiento|evoluci[oó]n)\s*(diario|de\s*ventas?)\s*(por\s*)?(tienda|sucursal)',
+            r'(evoluci[oó]n|tendencia)\s*(diaria|por\s*d[ií]a)\s*(de\s*ventas?)?\s*(por\s*)?(tienda|sucursal)',
+            r'(d[ií]a\s*a\s*d[ií]a|diariamente)\s*(por\s*)?(tienda|sucursal|pos)',
+        ],
+        'prioridad': 14,
+        'accion': 'ventas_diarias_por_tienda'
+    },
+
+    'pos_por_sucursal': {
+        'patrones': [
+            r'(ventas?\s*pos|caja)\s*por\s*(sucursal|tienda|local)',
+            r'(comparar|rendimiento)\s*(sucursales?|tiendas?)\s*(en\s*pos|en\s*caja)',
+            r'(qu[eé]\s*sucursal|qu[eé]\s*tienda)\s*(vende?\s*m[aá]s|tiene\s*mejor\s*rendimiento)\s*(en\s*pos)?',
+        ],
+        'prioridad': 11,
+        'accion': 'pos_por_sucursal'
+    },
+
+    'ticket_detalle': {
+        'patrones': [
+            r'(detalle|ver|consultar|buscar)\s*(el?\s*ticket|la?\s*venta)\s*#?\s*\d+',
+            r'(ticket|recibo|comprobante)\s*(de\s*venta)?\s*n[uú]mero\s*\d+',
+            r'(ver\s*ticket|abrir\s*ticket|mostrar\s*ticket)',
+        ],
+        'prioridad': 12,
+        'accion': 'ticket_detalle'
+    },
+
+    'productos_mas_vendidos_pos': {
+        'patrones': [
+            r'(m[aá]s\s*vendidos?|top\s*productos?)\s*(en\s*(caja|pos|punto\s*de\s*venta))',
+            r'(productos?\s*(que\s*m[aá]s\s*se\s*venden?|con\s*mayor\s*rotaci[oó]n))\s*(en\s*(pos|caja))?',
+        ],
+        'prioridad': 11,
+        'accion': 'productos_mas_vendidos_pos'
+    },
+
+    'merma_pos': {
+        'patrones': [
+            r'(merma|p[eé]rdida|diferencia)\s*(en\s*(caja|pos|punto\s*de\s*venta))',
+            r'(diferencias?\s*de\s*caja|faltante\s*en\s*caja)',
+        ],
+        'prioridad': 12,
+        'accion': 'merma_pos'
+    },
+
+    'rendimiento_terminal': {
+        'patrones': [
+            r'(rendimiento|performance|desempe[nñ]o)\s*(de\s*)?(terminal|caja\s*registradora|punto\s*de\s*venta)',
+            r'(terminal(es)?\s*(m[aá]s\s*activa|con\s*m[aá]s\s*ventas?|m[aá]s\s*r[aá]pida))',
+        ],
+        'prioridad': 11,
+        'accion': 'rendimiento_terminal'
+    },
+
+    'ventas_pos_vs_ecommerce': {
+        'patrones': [
+            r'(pos|tienda\s*f[ií]sica|canal\s*f[ií]sico)\s*(vs\.?|versus|comparad[ao]\s*con)\s*(ecommerce|tienda\s*online|web)',
+            r'(comparar|an[aá]lisis)\s*(ventas?\s*)?(canal\s*f[ií]sico|pos)\s*(y|vs\.?)\s*(online|digital|ecommerce)',
+            r'(cu[aá]nto\s*vende)\s*(la\s*tienda\s*f[ií]sica|el\s*pos)\s*(vs\.?|comparado\s*con)\s*(online|web)',
+        ],
+        'prioridad': 12,
+        'accion': 'ventas_pos_vs_ecommerce'
+    },
+
+    # ─── RRHH v2 ──────────────────────────────────────────────────────────────
+
+    'costo_rotacion': {
+        'patrones': [
+            r'(costo\s*(de\s*)?rotaci[oó]n|coste\s*(de\s*)?rotaci[oó]n)',
+            r'(cu[aá]nto\s*cuesta\s*(contratar|reemplazar|cambiar)\s*(un\s*empleado|personal))',
+            r'(costo\s*(de\s*contrataci[oó]n|de\s*despido|de\s*reemplazo))',
+        ],
+        'prioridad': 11,
+        'accion': 'costo_rotacion'
+    },
+
+    'clima_organizacional': {
+        'patrones': [
+            r'(clima\s*organizacional|ambiente\s*laboral|satisfacci[oó]n\s*(de\s*)?(empleados?|trabajadores?))',
+            r'(cultura\s*(organizacional|empresarial)|bienestar\s*(laboral|del\s*empleado))',
+            r'(encuesta\s*(de\s*clima|de\s*satisfacci[oó]n)\s*(laboral|organizacional)?)',
+        ],
+        'prioridad': 10,
+        'accion': 'clima_organizacional'
+    },
+
+    'cumplimiento_jornada': {
+        'patrones': [
+            r'(cumplimiento\s*(de\s*)?jornada|asistencia\s*(de\s*)?(empleados?|personal))',
+            r'(horas?\s*trabajadas?|horas?\s*de\s*trabajo|jornada\s*laboral)',
+            r'(puntualidad|tardanzas?|llegadas?\s*tarde|inasistencias?)',
+        ],
+        'prioridad': 10,
+        'accion': 'cumplimiento_jornada'
+    },
+
+    'estructura_organizacional': {
+        'patrones': [
+            r'(organigrama|estructura\s*(organizacional|de\s*la\s*empresa|jer[aá]rquica))',
+            r'(jerarqu[ií]a|niveles?\s*(jer[aá]rquicos?|organizacionales?))',
+            r'(qui[eé]n\s*(reporta\s*a|depende\s*de))',
+        ],
+        'prioridad': 10,
+        'accion': 'estructura_organizacional'
+    },
+
+    'incapacidades': {
+        'patrones': [
+            r'(incapacidades?|bajas?\s*m[eé]dicas?|ausencias?\s*por\s*enfermedad)',
+            r'(empleados?\s*(de\s*baja|incapacitados?|enfermos?))',
+            r'(cu[aá]ntos?\s*(d[ií]as?|horas?)\s*(de\s*)?(incapacidad|baja\s*m[eé]dica))',
+        ],
+        'prioridad': 11,
+        'accion': 'incapacidades'
+    },
+
+    'prestaciones_resumen': {
+        'patrones': [
+            r'(prestaciones?|beneficios?\s*(de\s*)?(empleados?|laborales?))',
+            r'(resumen\s*(de\s*)?prestaciones?|detalle\s*(de\s*)?prestaciones?)',
+            r'(aguinaldo|prima\s*vacacional|seguro\s*(de\s*vida|m[eé]dico)|fondo\s*de\s*ahorro)',
+        ],
+        'prioridad': 10,
+        'accion': 'prestaciones_resumen'
+    },
+
+    # ─── DIAGNÓSTICO v2 ───────────────────────────────────────────────────────
+
+    'validacion_cruzada': {
+        'patrones': [
+            r'(validaci[oó]n\s*cruzada|cruzar\s*datos?)',
+            r'(consistencia\s*entre\s*(m[oó]dulos?|[aá]reas?)|datos?\s*(cruzados?|inconsistentes?\s*entre))',
+            r'(comparar|cruzar)\s*(informaci[oó]n|datos?)\s*(entre\s*m[oó]dulos?)',
+        ],
+        'prioridad': 12,
+        'accion': 'validacion_cruzada'
+    },
+
+    'reconciliacion_stock_contable': {
+        'patrones': [
+            r'(reconciliaci[oó]n|conciliar)\s*(stock|inventario)\s*(con\s*)?(contabilidad|contable|libros)',
+            r'(diferencias?\s*(entre|de))\s*(inventario|stock)\s*(y\s*contabilidad|contable)',
+            r'(stock\s*contable\s*vs\.?\s*f[ií]sico|inventario\s*vs\.?\s*contable)',
+        ],
+        'prioridad': 12,
+        'accion': 'reconciliacion_stock_contable'
+    },
+
+    'integridad_referencial': {
+        'patrones': [
+            r'(integridad\s*referencial|referencias?\s*rotas?|datos?\s*(hu[eé]rfanos?|sin\s*referencia))',
+            r'(registros?\s*(sin\s*(padre|referencia)|hu[eé]rfanos?))',
+            r'(foreign\s*key|clave\s*for[aá]nea)\s*(rota|inv[aá]lida)',
+        ],
+        'prioridad': 12,
+        'accion': 'integridad_referencial'
+    },
+
+    'secuencias_rotas': {
+        'patrones': [
+            r'(secuencias?\s*(rotas?|interrumpidas?|faltantes?))',
+            r'(brechas?\s*en\s*(numeraci[oó]n|secuencia))',
+            r'(n[uú]meros?\s*(de\s*facturas?|de\s*pedidos?|de\s*documentos?)\s*(faltantes?|que\s*faltan?))',
+        ],
+        'prioridad': 12,
+        'accion': 'secuencias_rotas'
+    },
+
+    'configuraciones_riesgosas': {
+        'patrones': [
+            r'(configuraciones?\s*(riesgosas?|peligrosas?|inseguras?|de\s*riesgo))',
+            r'(seguridad\s*(de\s*configuraci[oó]n|del\s*sistema))',
+            r'(configuraciones?\s*(que\s*(representan?|son)\s*(un\s*)?(riesgo|peligro)))',
+        ],
+        'prioridad': 12,
+        'accion': 'configuraciones_riesgosas'
+    },
+
+    'accesos_inusuales': {
+        'patrones': [
+            r'(accesos?\s*(inusuales?|sospechosos?|no\s*autorizados?|extra[nñ]os?))',
+            r'(actividad\s*(sospechosa|inusual|an[oó]mala)\s*(de\s*)?(usuarios?|sesiones?))',
+            r'(intentos?\s*(de\s*)?(acceso|inicio\s*de\s*sesi[oó]n)\s*(fallidos?|rechazados?))',
+        ],
+        'prioridad': 12,
+        'accion': 'accesos_inusuales'
+    },
+
+    'operaciones_masivas': {
+        'patrones': [
+            r'(operaciones?\s*(masivas?|en\s*lote|bulk))',
+            r'(cambios?\s*(masivos?|en\s*lote|bulk))',
+            r'(modificaciones?\s*masivas?|actualizaciones?\s*masivas?)',
+            r'(eliminaciones?\s*masivas?|borrados?\s*(masivos?|en\s*lote))',
+        ],
+        'prioridad': 12,
+        'accion': 'operaciones_masivas'
+    },
+
+    # ─── ODOO v2 ──────────────────────────────────────────────────────────────
+
+    'relaciones_modelo': {
+        'patrones': [
+            r'(relaciones?\s*(del?\s*modelo|entre\s*modelos?)|campos?\s*relacionados?)',
+            r'(c[oó]mo\s*(se\s*relacionan?|est[aá]n?\s*relacionados?)\s*(los?\s*modelos?|las?\s*tablas?))',
+            r'(estructura\s*(del?\s*modelo|de\s*la\s*base\s*de\s*datos?))',
+        ],
+        'prioridad': 11,
+        'accion': 'relaciones_modelo'
+    },
+
+    'flujo_trabajo_modelo': {
+        'patrones': [
+            r'(flujo\s*de\s*trabajo|workflow|flujo\s*de\s*estados?)\s*(del?\s*modelo)?',
+            r'(estados?\s*(del?\s*modelo|disponibles?|posibles?))',
+            r'(c[oó]mo\s*(cambia[n]?|transiciona[n]?|fluyen?)\s*(los?\s*estados?|el\s*workflow))',
+        ],
+        'prioridad': 11,
+        'accion': 'flujo_trabajo_modelo'
+    },
+
+    'permisos_usuario': {
+        'patrones': [
+            r'(permisos?\s*(del?\s*usuario|de\s*acceso)|accesos?\s*(del?\s*usuario))',
+            r'(qu[eé]\s*(puede\s*hacer|tiene\s*acceso|permisos?\s*tiene)\s*(el\s*usuario|el\s*rol))',
+            r'(roles?\s*y\s*permisos?|derechos?\s*de\s*acceso)',
+        ],
+        'prioridad': 11,
+        'accion': 'permisos_usuario'
+    },
+
+    'log_acciones_usuario': {
+        'patrones': [
+            r'(log\s*(de\s*)?(acciones?|actividad)|historial\s*(de\s*)?(acciones?|actividad))\s*(del?\s*usuario)?',
+            r'(qu[eé]\s*(hizo|realiz[oó]|modific[oó])\s*(el\s*usuario|\w+))',
+            r'(audit[oó]log|chatter|mensajes?\s*de\s*seguimiento)',
+        ],
+        'prioridad': 11,
+        'accion': 'log_acciones_usuario'
+    },
+
+    'modulos_instalados': {
+        'patrones': [
+            r'(m[oó]dulos?\s*(instalados?|activos?|habilitados?))',
+            r'(addons?\s*(instalados?|activos?)|aplicaciones?\s*instaladas?)',
+            r'(qu[eé]\s*m[oó]dulos?\s*(hay|tenemos?|est[aá]n?\s*instalados?))',
+        ],
+        'prioridad': 11,
+        'accion': 'modulos_instalados'
+    },
+
+    'ir_cron_activos': {
+        'patrones': [
+            r'(tareas?\s*programadas?|cron\s*(activos?|jobs?)|procesos?\s*(autom[aá]ticos?|programados?))',
+            r'(ir\.cron|scheduled\s*actions?|acciones?\s*programadas?)',
+            r'(qu[eé]\s*(tareas?|procesos?)\s*(se\s*ejecutan?\s*autom[aá]ticamente|est[aá]n?\s*programados?))',
+        ],
+        'prioridad': 11,
+        'accion': 'ir_cron_activos'
+    },
+
+    'parametros_sistema': {
+        'patrones': [
+            r'(par[aá]metros?\s*(del?\s*sistema|t[eé]cnicos?|de\s*configuraci[oó]n))',
+            r'(configuraci[oó]n\s*(del?\s*sistema|t[eé]cnica|de\s*odoo))',
+            r'(ir\.config\.parameter|par[aá]metros?\s*del?\s*sistema)',
+        ],
+        'prioridad': 11,
+        'accion': 'parametros_sistema'
+    },
+
+    'mostrar_capacidades': {
+        'patrones': [
+            r'(qu[eé]\s*(puedes?\s*hacer|sabes?\s*hacer|funciones?\s*(tienes?|hay)|capacidades?\s*(tienes?|hay)))',
+            r'(funciones?\s*disponibles?|capacidades?\s*del?\s*(bot|asistente))',
+            r'(para\s*qu[eé]\s*(sirves?|eres?\s*[uú]til|puedo\s*usarte))',
+            r'(listado\s*de\s*(funciones?|capacidades?|comandos?))',
+        ],
+        'prioridad': 10,
+        'accion': 'mostrar_capacidades'
+    },
+
+    'generar_pdf_profesional': {
+        'patrones': [
+            r'(generar|exportar|crear|descargar)\s*(reporte|informe)?\s*pdf',
+            r'(reporte|informe)\s*(en\s*pdf|formato\s*pdf)',
+            r'(pdf\s*(del?\s*reporte|del?\s*informe|de\s*ventas?|de\s*inventario))',
+        ],
+        'prioridad': 10,
+        'accion': 'generar_pdf_profesional'
     },
 }
 

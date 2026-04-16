@@ -53,6 +53,10 @@ class AgenteEspecializadoBase:
     prompt_base: str = "Responder solo con datos verificables del sistema."
     acciones_soportadas: Set[str] = set()
     palabras_clave_prompt: Set[str] = set()
+    # Acción de resumen para fetch cross-domain en cadenas multi-agente.
+    # Si no está vacía, se ejecuta cuando este agente actúa como soporte
+    # en una consulta cuya acción principal NO pertenece a acciones_soportadas.
+    accion_resumen: str = ''
 
     def score_prompt(self, mensaje: str) -> float:
         import re as _re
@@ -179,6 +183,7 @@ class AgenteEspecializadoBase:
 class AgentVentas(AgenteEspecializadoBase):
     """Experto en análisis comercial con 20+ años en retail y distribución."""
     id_agente = "agente_ventas"
+    accion_resumen = 'analisis_ventas'
     prompt_base = (
         "Eres un director comercial con 20+ años de experiencia en retail, distribución y e-commerce. "
         "Solo respondes con datos verificables de Odoo. Siempre indicas período, filtros y fuente de datos. "
@@ -272,29 +277,73 @@ class AgentVentas(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Análisis del agente comercial' in (respuesta or ''):
+            return respuesta
         try:
+            import pandas as pd
+            hallazgos = []
+            alertas = []
+
             cols_money = [c for c in df.columns if c in ('amount_total', 'price_subtotal', 'amount_untaxed')]
             if not cols_money:
                 return respuesta
             col = cols_money[0]
-            import pandas as pd
             serie = pd.to_numeric(df[col], errors='coerce').dropna()
-            if serie.empty:
+            if serie.empty or serie.sum() <= 0:
                 return respuesta
+
             total = float(serie.sum())
-            if total <= 0:
-                return respuesta
-            top20_n = max(1, int(len(serie) * 0.2))
+            promedio = float(serie.mean())
+            maximo = float(serie.max())
+            n = len(serie)
+
+            hallazgos.append(f"💰 Total acumulado: **${total:,.2f}**")
+            hallazgos.append(f"📦 Registros analizados: **{n:,}**")
+            hallazgos.append(f"🎯 Ticket promedio: **${promedio:,.2f}**")
+            hallazgos.append(f"🏆 Mayor operación: **${maximo:,.2f}**")
+
+            top20_n = max(1, int(n * 0.2))
             top20_sum = float(serie.nlargest(top20_n).sum())
             concentracion = top20_sum / total * 100
-            linea = (
-                f"\n\n**Análisis del agente comercial:**\n"
-                f"- Total acumulado: ${total:,.2f}\n"
-                f"- Registros analizados: {len(serie)}\n"
-                f"- Concentración top 20%: {concentracion:.1f}% del total"
-            )
-            if 'Análisis del agente comercial' not in (respuesta or ''):
-                return respuesta + linea
+            hallazgos.append(f"📊 Concentración (top 20%): **{concentracion:.1f}%** del total")
+            if concentracion > 80:
+                alertas.append("🔴 **Alta concentración**: el 20% de los registros genera más del 80% de los ingresos. Si ese grupo disminuye, el impacto será severo.")
+            elif concentracion > 60:
+                alertas.append(f"🟡 **Concentración moderada** ({concentracion:.0f}%): diversificar base de clientes/productos reduce el riesgo.")
+            else:
+                alertas.append("🟢 **Distribución saludable**: los ingresos están bien repartidos entre registros.")
+
+            col_fecha = next((c for c in df.columns if 'date' in c.lower() or 'fecha' in c.lower()), None)
+            if col_fecha:
+                fechas = pd.to_datetime(df[col_fecha], errors='coerce')
+                df_t = pd.DataFrame({'fecha': fechas, 'monto': serie}).dropna()
+                if len(df_t) >= 6:
+                    df_t = df_t.sort_values('fecha')
+                    mitad = len(df_t) // 2
+                    prom_ini = float(df_t['monto'].iloc[:mitad].mean())
+                    prom_fin = float(df_t['monto'].iloc[mitad:].mean())
+                    if prom_ini > 0:
+                        cambio_pct = (prom_fin - prom_ini) / prom_ini * 100
+                        if cambio_pct > 5:
+                            hallazgos.append(f"📈 Tendencia: **al alza** (+{cambio_pct:.1f}% en segunda mitad del período)")
+                            alertas.append(f"🟢 Las ventas crecen {cambio_pct:.1f}% comparando la primera y segunda mitad del período. Buen momento para escalar.")
+                        elif cambio_pct < -5:
+                            hallazgos.append(f"📉 Tendencia: **a la baja** ({cambio_pct:.1f}% en segunda mitad del período)")
+                            alertas.append(f"🔴 Las ventas cayeron {abs(cambio_pct):.1f}% en la segunda mitad. Analizar causas y actuar antes de que continúe.")
+                        else:
+                            hallazgos.append("➡️ Tendencia: **estable** durante el período")
+
+            negativos = int((serie < 0).sum())
+            if negativos > 0:
+                alertas.append(f"🔴 Se detectaron **{negativos} registro(s) con monto negativo**. Pueden ser notas de crédito o devoluciones sin asociar.")
+
+            bloque = "\n\n---\n**🔍 Análisis del agente comercial:**\n"
+            bloque += "\n".join(f"- {h}" for h in hallazgos)
+            if alertas:
+                bloque += "\n\n**⚠️ Alertas:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Quieres análisis por vendedor, por producto, predicción o comparativa con otro período?*"
+            return respuesta + bloque
         except Exception:
             pass
         return respuesta
@@ -302,6 +351,7 @@ class AgentVentas(AgenteEspecializadoBase):
 
 class AgentInventarios(AgenteEspecializadoBase):
     """Experto en gestión de inventarios y cadena de suministro con 20+ años."""
+    accion_resumen = 'analisis_inventario'
     id_agente = "agente_inventario"
     prompt_base = (
         "Eres un gerente de supply chain con 20+ años de experiencia en gestión de inventarios, "
@@ -394,26 +444,74 @@ class AgentInventarios(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Análisis del agente de inventario' in (respuesta or ''):
+            return respuesta
+        # Si la respuesta ya incluye métricas de inventario completas, no duplicar
+        resp_lower = (respuesta or '').lower()
+        if 'productos en catálogo' in resp_lower or ('unidades totales' in resp_lower and 'stock crítico' in resp_lower):
+            return respuesta
         try:
+            import pandas as pd
             hallazgos = []
-            if 'quantity' in df.columns:
-                import pandas as pd
-                qty = pd.to_numeric(df['quantity'], errors='coerce')
+            alertas = []
+
+            col_qty = next((c for c in df.columns if c in ('quantity', 'qty_available', 'virtual_available')), None)
+            if col_qty:
+                qty = pd.to_numeric(df[col_qty], errors='coerce').fillna(0)
+                n = len(df)
+                total_uds = float(qty.sum())
                 negativos = int((qty < 0).sum())
                 ceros = int((qty == 0).sum())
+                criticos = int(((qty > 0) & (qty < 10)).sum())
+
+                hallazgos.append(f"📦 Productos en inventario: **{n:,}**")
+                hallazgos.append(f"🔢 Unidades totales en sistema: **{total_uds:,.0f}**")
+
                 if negativos > 0:
-                    hallazgos.append(f"- Stock negativo: {negativos} registros (posible inconsistencia)")
+                    alertas.append(f"🔴 **Stock negativo**: {negativos} producto(s) con cantidad negativa. Pueden existir movimientos pendientes de registrar o errores en el sistema. Revisar urgente.")
                 if ceros > 0:
-                    hallazgos.append(f"- Stock en cero: {ceros} registros")
-            if not hallazgos or 'Análisis del agente de inventario' in (respuesta or ''):
+                    alertas.append(f"🟡 **Sin existencias**: {ceros} producto(s) en cero. Verificar si están activos y si requieren reposición inmediata.")
+                if criticos > 0:
+                    alertas.append(f"🟡 **Stock crítico bajo** (<10 unidades): {criticos} producto(s). Evaluar reposición para evitar quiebre de stock.")
+                if negativos == 0 and ceros == 0:
+                    alertas.append("🟢 No se detectó stock negativo ni en cero. Inventario en buen estado general.")
+
+            col_val = next((c for c in df.columns if c in ('value', 'standard_price', 'cost_price')), None)
+            if col_val:
+                val = pd.to_numeric(df[col_val], errors='coerce').fillna(0)
+                valor_total = float(val.sum())
+                if valor_total > 0:
+                    hallazgos.append(f"💲 Valor estimado en inventario: **${valor_total:,.2f}**")
+                sin_costo = int((val == 0).sum())
+                if sin_costo > 0:
+                    alertas.append(f"🟡 **{sin_costo} producto(s) sin costo configurado**. Esto hace que la valoración del inventario sea inexacta. Actualizar en Odoo.")
+
+            if 'days_to_stockout' in df.columns:
+                dias = pd.to_numeric(df['days_to_stockout'], errors='coerce').dropna()
+                if not dias.empty:
+                    media_dias = float(dias.mean())
+                    hallazgos.append(f"⏱️ Cobertura promedio: **{media_dias:.0f} días**")
+                    menos7 = int((dias <= 7).sum())
+                    if menos7 > 0:
+                        alertas.append(f"🔴 **{menos7} producto(s) se agotan en ≤7 días**. Emitir órdenes de compra o transferencia de forma inmediata.")
+
+            if not hallazgos and not alertas:
                 return respuesta
-            return respuesta + "\n\n**Análisis del agente de inventario:**\n" + "\n".join(hallazgos)
+
+            bloque = "\n\n---\n**🔍 Análisis del agente de inventario:**\n"
+            bloque += "\n".join(f"- {h}" for h in hallazgos)
+            if alertas:
+                bloque += "\n\n**⚠️ Alertas:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Necesitas ver productos críticos, predicción de agotamiento o análisis ABC?*"
+            return respuesta + bloque
         except Exception:
             pass
         return respuesta
 
 
 class AgentFinanzas(AgenteEspecializadoBase):
+    accion_resumen = 'dashboard_kpis'
     """Experto financiero nivel CFO con 20+ años en contabilidad y tesorería."""
     id_agente = "agente_finanzas"
     prompt_base = (
@@ -510,21 +608,57 @@ class AgentFinanzas(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Análisis del agente financiero' in (respuesta or ''):
+            return respuesta
         try:
+            import pandas as pd
             hallazgos = []
-            if 'amount_residual' in df.columns and 'amount_total' in df.columns:
-                import pandas as pd
-                residual = pd.to_numeric(df['amount_residual'], errors='coerce').sum()
-                total = pd.to_numeric(df['amount_total'], errors='coerce').sum()
+            alertas = []
+
+            if 'amount_total' in df.columns and 'amount_residual' in df.columns:
+                total = pd.to_numeric(df['amount_total'], errors='coerce').fillna(0).sum()
+                residual = pd.to_numeric(df['amount_residual'], errors='coerce').fillna(0).sum()
+                cobrado = total - residual
+                n = len(df)
                 if total > 0:
-                    cobrado = total - residual
-                    pct = cobrado / total * 100
-                    hallazgos.append(f"- Total facturado: ${total:,.2f}")
-                    hallazgos.append(f"- Cobrado: ${cobrado:,.2f} ({pct:.1f}%)")
-                    hallazgos.append(f"- Pendiente: ${residual:,.2f}")
-            if not hallazgos or 'Análisis del agente financiero' in (respuesta or ''):
+                    pct_cobrado = cobrado / total * 100
+                    pct_pendiente = residual / total * 100
+                    hallazgos.append(f"💰 Total facturado: **${total:,.2f}**")
+                    hallazgos.append(f"✅ Cobrado: **${cobrado:,.2f}** ({pct_cobrado:.1f}%)")
+                    hallazgos.append(f"⏳ Pendiente de cobrar: **${residual:,.2f}** ({pct_pendiente:.1f}%)")
+                    hallazgos.append(f"📄 Facturas analizadas: **{n:,}**")
+                    if pct_pendiente > 40:
+                        alertas.append(f"🔴 **Cartera alta sin cobrar**: el {pct_pendiente:.1f}% de la facturación sigue pendiente (${residual:,.2f}). Priorizar la gestión de cobranza.")
+                    elif pct_pendiente > 20:
+                        alertas.append(f"🟡 **Cartera moderada**: {pct_pendiente:.1f}% pendiente. Revisar la antigüedad de cada cuenta.")
+                    else:
+                        alertas.append(f"🟢 **Cobranza eficiente**: solo el {pct_pendiente:.1f}% sigue pendiente. Buen desempeño del equipo.")
+
+            col_venc = next((c for c in df.columns if 'due' in c.lower() or 'vencimiento' in c.lower()), None)
+            if col_venc and 'amount_residual' in df.columns:
+                hoy = pd.Timestamp.now().normalize()
+                fechas_venc = pd.to_datetime(df[col_venc], errors='coerce')
+                residual_col = pd.to_numeric(df['amount_residual'], errors='coerce').fillna(0)
+                monto_vencido = float(residual_col[fechas_venc < hoy].sum())
+                if monto_vencido > 0:
+                    hallazgos.append(f"📅 Monto vencido (fecha pasada): **${monto_vencido:,.2f}**")
+                    alertas.append(f"🔴 **Facturas vencidas**: ${monto_vencido:,.2f} tienen fecha de vencimiento pasada. Requieren atención urgente para evitar castigo de cartera.")
+
+            if 'amount_total' in df.columns:
+                negs = int((pd.to_numeric(df['amount_total'], errors='coerce') < 0).sum())
+                if negs > 0:
+                    alertas.append(f"🟡 **{negs} registro(s) con monto negativo**. Suelen ser notas de crédito o devoluciones. Verificar que estén correctamente aplicadas.")
+
+            if not hallazgos and not alertas:
                 return respuesta
-            return respuesta + "\n\n**Análisis del agente financiero:**\n" + "\n".join(hallazgos)
+
+            bloque = "\n\n---\n**🔍 Análisis del agente financiero:**\n"
+            bloque += "\n".join(f"- {h}" for h in hallazgos)
+            if alertas:
+                bloque += "\n\n**⚠️ Alertas financieras:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Deseas ver análisis de antigüedad, flujo de caja o estado por cliente/proveedor?*"
+            return respuesta + bloque
         except Exception:
             pass
         return respuesta
@@ -636,27 +770,74 @@ class AgentDiagnostico(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Diagnóstico del agente' in (respuesta or ''):
+            return respuesta
 
         hallazgos = []
+        alertas = []
+
+        try:
+            n_total = len(df)
+            n_cols = len(df.columns)
+            hallazgos.append(f"📊 Registros auditados: **{n_total:,}**")
+            hallazgos.append(f"🗂️ Campos analizados: **{n_cols}**")
+        except Exception:
+            pass
 
         try:
             nulos = int(df.isna().sum().sum())
-            if nulos > 0:
-                hallazgos.append(f"- Valores nulos detectados: {nulos}")
+            celulas_totales = max(1, len(df) * len(df.columns))
+            pct_nulos = nulos / celulas_totales * 100
+            hallazgos.append(f"🔎 Valores nulos: **{nulos}** ({pct_nulos:.1f}% del total de campos)")
+            if pct_nulos > 20:
+                alertas.append(f"🔴 **Alta tasa de nulos ({pct_nulos:.1f}%)**: calidad de datos baja. Identificar campos críticos sin llenar.")
+            elif pct_nulos > 5:
+                alertas.append(f"🟡 **Nulos moderados ({pct_nulos:.1f}%)**: revisar campos obligatorios sin completar.")
+            else:
+                alertas.append(f"🟢 **Buena completitud**: solo {pct_nulos:.1f}% de valores nulos. Datos confiables.")
         except Exception:
             pass
 
         try:
+            import pandas as pd
             duplicados = int(df.duplicated().sum())
             if duplicados > 0:
-                hallazgos.append(f"- Filas potencialmente duplicadas: {duplicados}")
+                pct_dup = duplicados / max(1, len(df)) * 100
+                hallazgos.append(f"🔁 Filas duplicadas: **{duplicados}** ({pct_dup:.1f}%)")
+                if pct_dup > 10:
+                    alertas.append(f"🔴 **Alta duplicación ({pct_dup:.1f}%)**: riesgo de doble conteo. Depurar antes de tomar decisiones.")
+                else:
+                    alertas.append(f"🟡 **{duplicados} fila(s) duplicada(s)** detectadas. Verificar si son registros legítimos o errores.")
+            else:
+                alertas.append("🟢 **Sin duplicados detectados**. Integridad de registros correcta.")
         except Exception:
             pass
 
-        if not hallazgos or 'Diagnóstico del agente' in (respuesta or ''):
+        try:
+            import pandas as pd
+            cols_numericas = df.select_dtypes(include=['number']).columns.tolist()
+            for col in cols_numericas[:3]:
+                vals = pd.to_numeric(df[col], errors='coerce').dropna()
+                if len(vals) > 4:
+                    Q1, Q3 = vals.quantile(0.25), vals.quantile(0.75)
+                    IQR = Q3 - Q1
+                    outliers = int(((vals < Q1 - 1.5 * IQR) | (vals > Q3 + 1.5 * IQR)).sum())
+                    if outliers > 0:
+                        hallazgos.append(f"⚡ Valores atípicos en `{col}`: **{outliers}** registro(s)")
+                        alertas.append(f"🟡 **Outliers en `{col}`** ({outliers} casos): pueden ser errores de captura o transacciones extraordinarias. Revisar.")
+        except Exception:
+            pass
+
+        if not hallazgos:
             return respuesta
 
-        return respuesta + "\n\n**Diagnóstico del agente:**\n" + "\n".join(hallazgos)
+        bloque = "\n\n---\n**🔍 Diagnóstico del agente:**\n"
+        bloque += "\n".join(f"- {h}" for h in hallazgos)
+        if alertas:
+            bloque += "\n\n**⚠️ Hallazgos de calidad:**\n"
+            bloque += "\n".join(f"- {a}" for a in alertas)
+        bloque += "\n\n> 💡 *¿Quieres una auditoría completa, detección de anomalías o reporte de calidad de datos?*"
+        return respuesta + bloque
 
 
 class AgentConsultasOdoo(AgenteEspecializadoBase):
@@ -727,25 +908,46 @@ class AgentConsultasOdoo(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Metadatos del agente Odoo' in (respuesta or ''):
+            return respuesta
         try:
+            import pandas as pd
             n_reg = len(df)
             n_cols = len(df.columns)
             nulos = int(df.isna().sum().sum())
-            completitud = ((n_reg * n_cols - nulos) / max(1, n_reg * n_cols)) * 100
-            linea = (
-                f"\n\n**Metadatos del agente Odoo:**\n"
-                f"- Registros: {n_reg}\n"
-                f"- Campos: {n_cols}\n"
-                f"- Completitud de datos: {completitud:.1f}%"
-            )
-            if 'Metadatos del agente Odoo' not in (respuesta or ''):
-                return respuesta + linea
+            celulas = max(1, n_reg * n_cols)
+            completitud = (celulas - nulos) / celulas * 100
+            campos_muestra = ', '.join(df.columns[:5].tolist())
+            if n_cols > 5:
+                campos_muestra += '...'
+
+            hallazgos = [
+                f"📋 Registros obtenidos: **{n_reg:,}**",
+                f"🗂️ Campos disponibles: **{n_cols}** ({campos_muestra})",
+                f"✅ Completitud de datos: **{completitud:.1f}%**",
+            ]
+            alertas = []
+            if completitud < 80:
+                alertas.append(f"🟡 **Datos incompletos ({completitud:.1f}%)**: algunos campos no tienen valor. Puede afectar análisis posteriores. Completar en Odoo.")
+            if n_reg == 0:
+                alertas.append("🟡 **Sin registros encontrados** para los filtros aplicados. Ajustar fechas, empresa o criterios de búsqueda.")
+            elif n_reg == 1:
+                alertas.append("🟡 **Solo 1 registro** encontrado. Los análisis comparativos pueden no ser representativos.")
+
+            bloque = "\n\n---\n**📊 Metadatos del agente Odoo:**\n"
+            bloque += "\n".join(f"- {h}" for h in hallazgos)
+            if alertas:
+                bloque += "\n\n**⚠️ Observaciones:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Quieres explorar un campo específico, ver permisos de usuario o generar un reporte?*"
+            return respuesta + bloque
         except Exception:
             pass
         return respuesta
 
 
 class AgentCRM(AgenteEspecializadoBase):
+    accion_resumen = 'analisis_crm'
     """Experto en CRM y estrategia comercial con 20+ años."""
     id_agente = "agente_crm"
     prompt_base = (
@@ -837,31 +1039,65 @@ class AgentCRM(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Análisis del agente CRM' in (respuesta or ''):
+            return respuesta
         try:
+            import pandas as pd
             hallazgos = []
+            alertas = []
+
+            n_opor = len(df)
+            hallazgos.append(f"💼 Oportunidades analizadas: **{n_opor:,}**")
+
             if 'expected_revenue' in df.columns:
-                import pandas as pd
                 rev = pd.to_numeric(df['expected_revenue'], errors='coerce').dropna()
                 if not rev.empty:
-                    hallazgos.append(f"- Valor total pipeline: ${rev.sum():,.2f}")
-                    hallazgos.append(f"- Oportunidades analizadas: {len(rev)}")
-                    hallazgos.append(f"- Valor promedio: ${rev.mean():,.2f}")
-            if 'probability' in df.columns and 'expected_revenue' in df.columns:
-                import pandas as pd
+                    total_pipeline = float(rev.sum())
+                    promedio = float(rev.mean())
+                    hallazgos.append(f"💰 Valor total del pipeline: **${total_pipeline:,.2f}**")
+                    hallazgos.append(f"🎯 Valor promedio por oportunidad: **${promedio:,.2f}**")
+
+            if 'probability' in df.columns:
                 prob = pd.to_numeric(df['probability'], errors='coerce').fillna(0)
-                rev_all = pd.to_numeric(df['expected_revenue'], errors='coerce').fillna(0)
-                ponderado = (rev_all * prob / 100).sum()
-                if ponderado > 0:
-                    hallazgos.append(f"- Valor ponderado (prob.): ${ponderado:,.2f}")
-            if not hallazgos or 'Análisis del agente CRM' in (respuesta or ''):
-                return respuesta
-            return respuesta + "\n\n**Análisis del agente CRM:**\n" + "\n".join(hallazgos)
+                calientes = int((prob >= 70).sum())
+                tibias = int(((prob >= 30) & (prob < 70)).sum())
+                frias = int((prob < 30).sum())
+                hallazgos.append(f"🔥 Calientes (≥70%): **{calientes}** | Tibias (30-70%): **{tibias}** | Frías (<30%): **{frias}**")
+
+                if 'expected_revenue' in df.columns:
+                    rev_all = pd.to_numeric(df['expected_revenue'], errors='coerce').fillna(0)
+                    ponderado = float((rev_all * prob / 100).sum())
+                    if ponderado > 0:
+                        hallazgos.append(f"📊 Valor ponderado (por probabilidad): **${ponderado:,.2f}**")
+
+                if frias > calientes and n_opor > 5:
+                    alertas.append(f"🔴 **Pipeline frío**: hay más oportunidades de baja probabilidad ({frias}) que calientes ({calientes}). Revisar estrategia de cierre o actualizar etapas.")
+                elif calientes > 0:
+                    alertas.append(f"🟢 **{calientes} oportunidad(es) caliente(s)** con alta probabilidad de cierre. Priorizar seguimiento en las próximas 48 horas.")
+
+            col_fecha = next((c for c in df.columns if 'write_date' in c or 'date_deadline' in c), None)
+            if col_fecha:
+                hoy = pd.Timestamp.now()
+                fechas = pd.to_datetime(df[col_fecha], errors='coerce')
+                dias = (hoy - fechas).dt.days
+                estancadas = int((dias > 30).sum())
+                if estancadas > 0:
+                    alertas.append(f"🟡 **{estancadas} oportunidad(es) sin actividad en +30 días**. Pueden perderse por falta de seguimiento. Asignar tarea de contacto.")
+
+            bloque = "\n\n---\n**🔍 Análisis del agente CRM:**\n"
+            bloque += "\n".join(f"- {h}" for h in hallazgos)
+            if alertas:
+                bloque += "\n\n**⚠️ Alertas del pipeline:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Quieres ver el análisis de churn, actividades pendientes, leads por origen o win rate?*"
+            return respuesta + bloque
         except Exception:
             pass
         return respuesta
 
 
 class AgentCompras(AgenteEspecializadoBase):
+    accion_resumen = 'analisis_compras'
     """Experto en compras y gestión de proveedores con 20+ años."""
     id_agente = "agente_compras"
     prompt_base = (
@@ -957,26 +1193,62 @@ class AgentCompras(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Análisis del agente de compras' in (respuesta or ''):
+            return respuesta
         try:
+            import pandas as pd
             hallazgos = []
+            alertas = []
+
             if 'amount_total' in df.columns:
-                import pandas as pd
                 montos = pd.to_numeric(df['amount_total'], errors='coerce').dropna()
                 if not montos.empty:
-                    hallazgos.append(f"- Gasto total: ${montos.sum():,.2f}")
-                    hallazgos.append(f"- Órdenes analizadas: {len(montos)}")
+                    total_gasto = float(montos.sum())
+                    n_ordenes = len(montos)
+                    promedio = float(montos.mean())
+                    maximo = float(montos.max())
+                    hallazgos.append(f"💳 Gasto total: **${total_gasto:,.2f}**")
+                    hallazgos.append(f"📋 Órdenes analizadas: **{n_ordenes:,}**")
+                    hallazgos.append(f"🎯 Orden promedio: **${promedio:,.2f}**")
+                    hallazgos.append(f"🏆 Mayor orden: **${maximo:,.2f}**")
+
             if 'partner_id' in df.columns:
                 n_prov = df['partner_id'].nunique()
-                hallazgos.append(f"- Proveedores distintos: {n_prov}")
-            if not hallazgos or 'Análisis del agente de compras' in (respuesta or ''):
+                hallazgos.append(f"🏧 Proveedores distintos: **{n_prov}**")
+                if n_prov == 1:
+                    alertas.append("🔴 **Solo 1 proveedor** en este análisis. Dependencia total. Se recomienda buscar alternativas para reducir riesgo.")
+                elif 'amount_total' in df.columns:
+                    montos_limpios = pd.to_numeric(df['amount_total'], errors='coerce').fillna(0)
+                    df_temp = df.assign(_monto=montos_limpios)
+                    gasto_por_prov = df_temp.groupby('partner_id')['_monto'].sum()
+                    gasto_total_prov = float(gasto_por_prov.sum())
+                    if gasto_total_prov > 0 and not gasto_por_prov.empty:
+                        top_prov_pct = float(gasto_por_prov.max()) / gasto_total_prov * 100
+                        hallazgos.append(f"📊 Concentración en proveedor principal: **{top_prov_pct:.1f}%** del gasto")
+                        if top_prov_pct > 70:
+                            alertas.append(f"🔴 **Riesgo de dependencia**: el proveedor principal concentra el {top_prov_pct:.1f}% del gasto. Buscar alternativas urgente.")
+                        elif top_prov_pct > 50:
+                            alertas.append(f"🟡 **Concentración moderada** en un proveedor ({top_prov_pct:.1f}%). Evaluar proveedores alternativos.")
+                        else:
+                            alertas.append(f"🟢 **Buena diversificación**: el proveedor principal concentra solo el {top_prov_pct:.1f}%. Riesgo bajo.")
+
+            if not hallazgos and not alertas:
                 return respuesta
-            return respuesta + "\n\n**Análisis del agente de compras:**\n" + "\n".join(hallazgos)
+
+            bloque = "\n\n---\n**🔍 Análisis del agente de compras:**\n"
+            bloque += "\n".join(f"- {h}" for h in hallazgos)
+            if alertas:
+                bloque += "\n\n**⚠️ Alertas de abastecimiento:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Quieres ver evaluación de proveedores, comparativa de precios o análisis de lead times?*"
+            return respuesta + bloque
         except Exception:
             pass
         return respuesta
 
 
 class AgentPDV(AgenteEspecializadoBase):
+    accion_resumen = 'resumen_pos'
     """Experto en punto de venta y operación de tiendas con 20+ años."""
     id_agente = "agente_pdv"
     prompt_base = (
@@ -1004,6 +1276,8 @@ class AgentPDV(AgenteEspecializadoBase):
         'rendimiento_terminal',          # Rendimiento por terminal/caja
         'cierre_caja_pendiente',         # Sesiones que debieron cerrarse y no
         'ventas_pos_vs_ecommerce',       # Comparativa canal físico vs digital
+        'ventas_diarias_por_tienda',     # Comportamiento diario de ventas por tienda (tabla + gráfica)
+        'descuentos_por_tienda',          # Descuentos y pérdida de utilidad agrupado por tienda
     }
     palabras_clave_prompt = {
         'pos', 'punto de venta', 'pdv', 'caja', 'cajero', 'sesión', 'sesiones',
@@ -1071,18 +1345,51 @@ class AgentPDV(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Análisis del agente PDV' in (respuesta or ''):
+            return respuesta
         try:
+            import pandas as pd
             hallazgos = []
+            alertas = []
+
             if 'amount_total' in df.columns:
-                import pandas as pd
                 ventas = pd.to_numeric(df['amount_total'], errors='coerce').dropna()
                 if not ventas.empty:
-                    hallazgos.append(f"- Ventas POS total: ${ventas.sum():,.2f}")
-                    hallazgos.append(f"- Tickets: {len(ventas)}")
-                    hallazgos.append(f"- Ticket promedio: ${ventas.mean():,.2f}")
-            if not hallazgos or 'Análisis del agente PDV' in (respuesta or ''):
+                    total = float(ventas.sum())
+                    n_tickets = len(ventas)
+                    promedio = float(ventas.mean())
+                    maximo = float(ventas.max())
+                    positivos = ventas[ventas > 0]
+                    minimo = float(positivos.min()) if not positivos.empty else 0.0
+                    hallazgos.append(f"🛒 Tickets procesados: **{n_tickets:,}**")
+                    hallazgos.append(f"💰 Ventas POS totales: **${total:,.2f}**")
+                    hallazgos.append(f"🎯 Ticket promedio: **${promedio:,.2f}**")
+                    hallazgos.append(f"🏆 Ticket máximo: **${maximo:,.2f}** | 🔽 Mínimo: **${minimo:,.2f}**")
+                    if promedio < 50:
+                        alertas.append(f"🟡 **Ticket promedio bajo** (${promedio:,.2f}): evaluar estrategias de upselling, combos o promoción de productos adicionales.")
+                    elif promedio > 1000:
+                        alertas.append(f"🟢 **Ticket promedio alto** (${promedio:,.2f}): perfil de compra premium o compras de volumen. Buen indicador de valor por cliente.")
+
+            if 'state' in df.columns:
+                abiertas = int((df['state'] == 'opened').sum())
+                if abiertas > 0:
+                    alertas.append(f"🔴 **{abiertas} sesión(es) POS abierta(s)**: si el negocio está cerrado, deben cerrarse para evitar inconsistencias en el corte de caja.")
+
+            if 'amount_total' in df.columns:
+                negs = int((pd.to_numeric(df['amount_total'], errors='coerce') < 0).sum())
+                if negs > 0:
+                    alertas.append(f"🟡 **{negs} transacción(es) negativa(s)** (posibles devoluciones). Verificar que estén registradas correctamente en el cierre de caja.")
+
+            if not hallazgos and not alertas:
                 return respuesta
-            return respuesta + "\n\n**Análisis del agente PDV:**\n" + "\n".join(hallazgos)
+
+            bloque = "\n\n---\n**🔍 Análisis del agente PDV:**\n"
+            bloque += "\n".join(f"- {h}" for h in hallazgos)
+            if alertas:
+                bloque += "\n\n**⚠️ Alertas de punto de venta:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Quieres ver productividad por cajero, métodos de pago, comparativa entre sucursales o cierre de caja?*"
+            return respuesta + bloque
         except Exception:
             pass
         return respuesta
@@ -1120,6 +1427,7 @@ class AgentPredicciones(AgenteEspecializadoBase):
         'forecast_multiproducto',        # Pronóstico cruzado de múltiples productos
         'backtesting_modelo',            # Validación retrospectiva de modelos predictivos
         'intervalos_confianza',          # Cálculo explícito de intervalos de confianza
+        'proyeccion_ventas',             # Proyección de ventas para N días con escenarios
     }
     palabras_clave_prompt = {
         'predecir', 'predicción', 'forecast', 'proyección', 'proyectar', 'estimar',
@@ -1173,39 +1481,66 @@ class AgentPredicciones(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Tendencia observada por el agente' in (respuesta or ''):
+            return respuesta
 
         try:
             columnas_numericas = df.select_dtypes(include=['number']).columns.tolist()
         except Exception:
             columnas_numericas = []
 
-        if not columnas_numericas or 'Tendencia observada por el agente' in (respuesta or ''):
+        if not columnas_numericas:
             return respuesta
 
-        serie = df[columnas_numericas[0]].dropna()
-        if len(serie) < 4:
+        try:
+            hallazgos = []
+            alertas = []
+
+            serie = df[columnas_numericas[0]].dropna()
+            if len(serie) < 4:
+                return respuesta
+
+            mitad = max(1, len(serie) // 2)
+            prom_ini = float(serie.iloc[:mitad].mean())
+            prom_fin = float(serie.iloc[mitad:].mean())
+            maximo = float(serie.max())
+            minimo = float(serie.min())
+            media = float(serie.mean())
+            cv = float(serie.std(ddof=0) / max(abs(media), 1e-9)) * 100
+
+            cambio = (prom_fin - prom_ini) / abs(prom_ini) * 100 if abs(prom_ini) > 1e-9 else 0.0
+
+            if cambio > 5:
+                tendencia = f"📈 al alza (+{cambio:.1f}%)"
+                alertas.append(f"🟢 **Tendencia positiva** del {cambio:.1f}% en la segunda mitad de la muestra. Pronóstico favorable si el patrón continúa.")
+            elif cambio < -5:
+                tendencia = f"📉 a la baja ({cambio:.1f}%)"
+                alertas.append(f"🔴 **Tendencia negativa** del {abs(cambio):.1f}%. Tomar medidas correctivas antes de que continúe la caída.")
+            else:
+                tendencia = "➡️ estable"
+                alertas.append("🟡 **Tendencia estable**: sin crecimiento ni caída significativa. Evaluar si este es el resultado esperado o si se necesita impulso.")
+
+            nivel_vol = "alta 🔴" if cv > 30 else "moderada 🟡" if cv > 15 else "baja 🟢"
+            hallazgos.append(f"📊 Serie analizada: **{columnas_numericas[0]}**")
+            hallazgos.append(f"🔢 Puntos de datos: **{len(serie):,}**")
+            hallazgos.append(f"📈 Tendencia en la muestra: **{tendencia}**")
+            hallazgos.append(f"🔼 Máximo: **{maximo:,.2f}** | 🔽 Mínimo: **{minimo:,.2f}**")
+            hallazgos.append(f"📐 Volatilidad (CV): **{cv:.1f}%** ({nivel_vol})")
+
+            if cv > 40:
+                alertas.append(f"🔴 **Alta volatilidad ({cv:.1f}%)**: la serie es muy irregular. Los pronósticos tienen mayor margen de error; incluir escenarios optimista y pesimista.")
+            elif cv > 20:
+                alertas.append(f"🟡 **Volatilidad moderada ({cv:.1f}%)**: los pronósticos son orientativos. Se recomienda validar con al menos 2 escenarios.")
+
+            bloque = "\n\n---\n**🔍 Tendencia observada por el agente predictivo:**\n"
+            bloque += "\n".join(f"- {h}" for h in hallazgos)
+            if alertas:
+                bloque += "\n\n**⚠️ Insights predictivos:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *Recuerda: toda predicción es probabilística. Los resultados reales dependen de factores externos no modelados.*"
+            return respuesta + bloque
+        except Exception:
             return respuesta
-
-        mitad = max(1, len(serie) // 2)
-        promedio_inicial = float(serie.iloc[:mitad].mean())
-        promedio_final = float(serie.iloc[mitad:].mean())
-        delta = promedio_final - promedio_inicial
-
-        if abs(delta) < max(abs(promedio_inicial) * 0.03, 1e-9):
-            tendencia = 'estable'
-        elif delta > 0:
-            tendencia = 'al alza'
-        else:
-            tendencia = 'a la baja'
-
-        return (
-            respuesta
-            + "\n\n**Tendencia observada por el agente:**\n"
-            + f"- Serie analizada: {columnas_numericas[0]}\n"
-            + f"- Comportamiento en la muestra: {tendencia}\n"
-            + f"- Promedio inicial: {promedio_inicial:,.2f}\n"
-            + f"- Promedio final: {promedio_final:,.2f}"
-        )
 
 
 class AgentMatematicas(AgenteEspecializadoBase):
@@ -1278,29 +1613,53 @@ class AgentMatematicas(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Indicadores matemáticos del agente' in (respuesta or ''):
+            return respuesta
 
         try:
             columnas_numericas = df.select_dtypes(include=['number']).columns.tolist()
         except Exception:
             columnas_numericas = []
 
-        if not columnas_numericas or 'Indicadores matemáticos del agente' in (respuesta or ''):
+        if not columnas_numericas:
             return respuesta
 
-        lineas = []
-        for columna in columnas_numericas[:2]:
-            serie = df[columna].dropna()
-            if len(serie) < 2:
-                continue
-            promedio = float(serie.mean())
-            if promedio != 0:
-                variabilidad = abs(float(serie.std(ddof=0)) / promedio) * 100
-                lineas.append(f"- {columna}: promedio {promedio:,.2f}, variabilidad {variabilidad:,.2f}%")
+        try:
+            import pandas as pd
+            lineas = []
+            alertas = []
 
-        if not lineas:
+            for columna in columnas_numericas[:3]:
+                serie = df[columna].dropna()
+                if len(serie) < 2:
+                    continue
+                promedio = float(serie.mean())
+                if abs(promedio) < 1e-9:
+                    continue
+                desv = float(serie.std(ddof=0))
+                variabilidad = desv / abs(promedio) * 100
+                maximo = float(serie.max())
+                minimo = float(serie.min())
+                nivel_var = "baja ✅" if variabilidad <= 15 else "moderada 🟡" if variabilidad <= 35 else "alta 🔴"
+                lineas.append(f"**{columna}**: promedio **{promedio:,.2f}** | min **{minimo:,.2f}** | max **{maximo:,.2f}** | variabilidad **{variabilidad:.1f}%** ({nivel_var})")
+                if variabilidad > 35:
+                    alertas.append(f"🔴 **`{columna}` muy variable ({variabilidad:.1f}%)**: valores muy dispersos. Pueden existir casos extremos que distorsionen los promedios.")
+                elif variabilidad > 15:
+                    alertas.append(f"🟡 **`{columna}` variabilidad moderada ({variabilidad:.1f}%)**: resultados mixtos. Revisar si hay grupos diferenciados.")
+
+            if not lineas:
+                return respuesta
+
+            bloque = "\n\n---\n**🔍 Indicadores matemáticos del agente:**\n"
+            for l in lineas:
+                bloque += f"- {l}\n"
+            if alertas:
+                bloque += "\n**⚠️ Observaciones estadísticas:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Quieres ver el cálculo con fórmulas, análisis de sensibilidad o proyección financiera?*"
+            return respuesta + bloque
+        except Exception:
             return respuesta
-
-        return respuesta + "\n\n**Indicadores matemáticos del agente:**\n" + "\n".join(lineas)
 
 
 class AgentEstadistica(AgenteEspecializadoBase):
@@ -1391,31 +1750,59 @@ class AgentEstadistica(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Resumen estadístico del agente' in (respuesta or ''):
+            return respuesta
 
         try:
             columnas_numericas = df.select_dtypes(include=['number']).columns.tolist()
         except Exception:
             columnas_numericas = []
 
-        if not columnas_numericas or 'Resumen estadístico del agente' in (respuesta or ''):
+        if not columnas_numericas:
             return respuesta
 
-        lineas = []
-        for columna in columnas_numericas[:3]:
-            serie = df[columna].dropna()
-            if serie.empty:
-                continue
-            lineas.append(
-                f"- {columna}: media {serie.mean():,.2f}, mediana {serie.median():,.2f}, desviación {serie.std(ddof=0):,.2f}"
-            )
+        try:
+            import pandas as pd
+            lineas = []
+            alertas = []
+            n = len(df)
 
-        if not lineas:
+            lineas.append(f"📊 Muestra analizada: **{n:,} registros**")
+            if n < 30:
+                alertas.append(f"🟡 **Muestra pequeña (n={n})**: con menos de 30 registros, los promedios y porcentajes pueden no ser representativos de la población total.")
+
+            for columna in columnas_numericas[:3]:
+                serie = df[columna].dropna()
+                if serie.empty:
+                    continue
+                media = float(serie.mean())
+                mediana = float(serie.median())
+                desv = float(serie.std(ddof=0))
+                sesgo = "asimétrica (outliers pueden distorsionar el promedio)" if abs(media - mediana) > desv * 0.5 and desv > 0 else "simétrica"
+                Q1, Q3 = float(serie.quantile(0.25)), float(serie.quantile(0.75))
+                IQR = Q3 - Q1
+                outliers = int(((serie < Q1 - 1.5 * IQR) | (serie > Q3 + 1.5 * IQR)).sum())
+                lineas.append(f"**{columna}**: media **{media:,.2f}** | mediana **{mediana:,.2f}** | σ **{desv:,.2f}** | distribución: *{sesgo}*")
+                if outliers > 0:
+                    alertas.append(f"⚡ **`{columna}`**: {outliers} valor(es) atípico(s) detectados (método IQR). Pueden ser errores de captura o transacciones extraordinarias reales.")
+
+            if len(lineas) <= 1:
+                return respuesta
+
+            bloque = "\n\n---\n**🔍 Resumen estadístico del agente:**\n"
+            for l in lineas:
+                bloque += f"- {l}\n"
+            if alertas:
+                bloque += "\n**⚠️ Alertas estadísticas:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Quieres segmentación de datos, análisis de correlación, detección de outliers o dashboard de KPIs?*"
+            return respuesta + bloque
+        except Exception:
             return respuesta
-
-        return respuesta + "\n\n**Resumen estadístico del agente:**\n" + "\n".join(lineas)
 
 
 class AgentRRHH(AgenteEspecializadoBase):
+    accion_resumen = 'consultar_empleados'
     """Experto en recursos humanos y gestión del talento con 20+ años."""
     id_agente = "agente_rrhh"
     prompt_base = (
@@ -1484,21 +1871,57 @@ class AgentRRHH(AgenteEspecializadoBase):
     def enriquecer_respuesta(self, consulta: Any, respuesta: str, df: Any, mensaje: str = "") -> str:
         if df is None or not hasattr(df, 'empty') or df.empty:
             return respuesta
+        if 'Análisis del agente RRHH' in (respuesta or ''):
+            return respuesta
         try:
+            import pandas as pd
             hallazgos = []
+            alertas = []
             n = len(df)
-            hallazgos.append(f"- Registros analizados: {n}")
+            hallazgos.append(f"👥 Registros analizados: **{n:,}**")
+
             if 'department_id' in df.columns:
                 n_dep = df['department_id'].nunique()
-                hallazgos.append(f"- Departamentos involucrados: {n_dep}")
+                hallazgos.append(f"🏢 Departamentos involucrados: **{n_dep}**")
+                if n > 0:
+                    top_dep_count = df['department_id'].value_counts().iloc[0]
+                    pct_top = top_dep_count / n * 100
+                    if pct_top > 60:
+                        alertas.append(f"🟡 **Alta concentración en un departamento** ({pct_top:.0f}% de los registros). Verificar que el filtro aplicado sea el correcto.")
+
             if 'wage' in df.columns:
-                import pandas as pd
                 salarios = pd.to_numeric(df['wage'], errors='coerce').dropna()
                 if not salarios.empty:
-                    hallazgos.append(f"- Nómina promedio: ${salarios.mean():,.2f}")
-            if len(hallazgos) <= 1 or 'Análisis del agente RRHH' in (respuesta or ''):
+                    prom_sal = float(salarios.mean())
+                    max_sal = float(salarios.max())
+                    min_sal = float(salarios.min())
+                    hallazgos.append(f"💰 Nómina promedio: **${prom_sal:,.2f}**")
+                    hallazgos.append(f"🔼 Salario máximo: **${max_sal:,.2f}** | 🔽 Mínimo: **${min_sal:,.2f}**")
+                    if min_sal > 0:
+                        brecha = (max_sal - min_sal) / min_sal * 100
+                        if brecha > 500:
+                            alertas.append(f"🔴 **Alta brecha salarial** ({brecha:.0f}% entre máximo y mínimo). Revisar equidad interna y bandas salariales.")
+                        elif brecha > 200:
+                            alertas.append(f"🟡 **Brecha salarial moderada** ({brecha:.0f}%). Evaluar si las diferencias corresponden a puestos y antigüedad.")
+
+            if 'job_id' in df.columns:
+                n_puestos = df['job_id'].nunique()
+                hallazgos.append(f"💼 Puestos distintos: **{n_puestos}**")
+
+            if 'contract_type_id' in df.columns:
+                tipos = df['contract_type_id'].value_counts()
+                hallazgos.append(f"📄 Tipos de contrato detectados: **{len(tipos)}**")
+
+            if len(hallazgos) <= 1:
                 return respuesta
-            return respuesta + "\n\n**Análisis del agente RRHH:**\n" + "\n".join(hallazgos)
+
+            bloque = "\n\n---\n**🔍 Análisis del agente RRHH:**\n"
+            bloque += "\n".join(f"- {h}" for h in hallazgos)
+            if alertas:
+                bloque += "\n\n**⚠️ Alertas de recursos humanos:**\n"
+                bloque += "\n".join(f"- {a}" for a in alertas)
+            bloque += "\n\n> 💡 *¿Quieres ver rotación de personal, vencimiento de contratos, ausentismo o costo por empleado?*"
+            return respuesta + bloque
         except Exception:
             pass
         return respuesta
@@ -2082,8 +2505,11 @@ class GestorMultiAgente:
             resp_soporte = ""
             df_soporte = None
 
-            # Solo ejecutar si el agente tiene una acción específica para esta consulta;
-            # de lo contrario ir directo a enriquecimiento con df_principal.
+            # Determinar qué acción ejecutar:
+            # 1. Si la acción principal está en las soportadas → usar tal cual (misma consulta, contexto completo)
+            # 2. Si el agente es de dominio ('datos') y tiene accion_resumen → fetch cross-domain propio
+            # 3. Caso contrario → solo enriquecer con df_principal (análisis estadístico/matemático)
+            accion_resumen = getattr(agente, 'accion_resumen', '') or ''
             if ejecutor and accion_actual in acciones_propias:
                 try:
                     resp_soporte, df_soporte = agente.ejecutar(consulta, mensaje, ejecutor)
@@ -2092,11 +2518,26 @@ class GestorMultiAgente:
                 except Exception as e:
                     paso.error = str(e)[:120]
                     advertencias.append(f"{paso.agente_id}: error ejecución — {paso.error}")
-                    # No marcar exito=False: aún puede enriquecer con df_principal
+            elif ejecutor and paso.rol == 'datos' and accion_resumen:
+                # Cross-domain: este agente aporta sus propios datos de resumen
+                import copy as _copy
+                consulta_cross = _copy.copy(consulta)
+                consulta_cross.accion_sugerida = accion_resumen
+                try:
+                    resp_soporte, df_soporte = agente.ejecutar(consulta_cross, mensaje, ejecutor)
+                    paso.respuesta_parcial = resp_soporte
+                    paso.datos_parciales = df_soporte
+                except Exception as e:
+                    paso.error = str(e)[:120]
+                    advertencias.append(f"{paso.agente_id}: error cross-domain — {paso.error}")
 
             # Enriquecer la respuesta acumulada con datos del soporte
             df_para_enriquecer = df_soporte if (df_soporte is not None and hasattr(df_soporte, 'empty') and not df_soporte.empty) else df_principal
             respuesta_actual = agente.enriquecer_respuesta(consulta, respuesta_actual, df_para_enriquecer)
+
+            # Añadir datos de soporte cross-domain si son relevantes y no están ya en la respuesta
+            if resp_soporte and paso.rol == 'datos' and accion_resumen and resp_soporte not in respuesta_actual:
+                respuesta_actual = respuesta_actual + f"\n\n---\n{resp_soporte}"
 
             resultado_post = agente.post_ejecucion(consulta, respuesta_actual, df_para_enriquecer)
             paso.resultado_post = resultado_post
