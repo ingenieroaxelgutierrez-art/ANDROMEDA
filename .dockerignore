@@ -1,0 +1,46 @@
+# ============================================================
+# ANDROMEDA — .dockerignore Backend
+# ============================================================
+
+# Control de versiones
+.git
+.gitignore
+
+# Entornos virtuales Python
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Docker
+Dockerfile*
+compose*.yml
+.dockerignore
+
+# Datos sensibles / temporales
+.env
+*.db-shm
+*.db-wal
+temp_*.py
+test_*.py
+
+# Logs y reportes generados
+logs/
+Reportes_Bot/
+reports/
+
+# Frontend (no pertenece al contexto del backend)
+frontend/
+
+# Assets pesados que se descargan en runtime
+assets/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace

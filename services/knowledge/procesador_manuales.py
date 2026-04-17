@@ -480,10 +480,21 @@ class ProcesadorManuales:
     def _imagen_a_url(self, ruta_imagen: str) -> Optional[str]:
         """Devuelve la URL pública de la imagen servida por el endpoint /manuales/imagenes/."""
         try:
-            if not os.path.exists(ruta_imagen):
+            # Usar os.path.basename en lugar de Path().name para manejar correctamente
+            # rutas absolutas de Windows (con \\) cuando el código corre en Linux (Docker).
+            # Path('C:\\Users\\...\\img.png').name en Linux devuelve la cadena completa.
+            nombre = os.path.basename(ruta_imagen.replace('\\', '/'))
+            if not nombre:
                 return None
-            nombre = Path(ruta_imagen).name
-            return f"http://127.0.0.1:8000/manuales/imagenes/{nombre}"
+
+            # Verificar que el archivo existe en el directorio real de imágenes
+            ruta_real = self.directorio_imagenes / nombre
+            if not ruta_real.exists():
+                return None
+
+            # Leer host desde variable de entorno para que funcione en local y en Docker
+            api_base = os.getenv("API_BASE_URL", "http://localhost:8000")
+            return f"{api_base}/manuales/imagenes/{nombre}"
         except Exception as e:
             logger.error(f"Error generando URL de imagen: {e}")
             return None

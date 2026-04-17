@@ -8,6 +8,7 @@
 # - Análisis sin depender de APIs externas
 # ============================================================
 
+import os
 import requests
 import json
 import time
@@ -23,7 +24,8 @@ logger = get_logger("services.llm.ollama_integrador")
 class OllamaIntegrador:
     """Integración con Ollama para análisis de prompts."""
     
-    def __init__(self, host: str = "http://localhost:11434"):
+    def __init__(self, host: str = None):
+        host = host or os.getenv("OLLAMA_HOST", "http://localhost:11434")
         """
         Inicializa el integrador de Ollama.
         

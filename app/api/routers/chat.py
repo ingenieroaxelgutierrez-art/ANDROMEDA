@@ -3,6 +3,7 @@
 # POST /chat — pipeline principal usuario → respuesta
 # ============================================================
 
+import asyncio
 import time
 import uuid
 from datetime import datetime
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("", response_model=RespuestaAPI, summary="Procesar mensaje")
-def procesar_chat(request: MensajeRequest, bot=Depends(get_bot)) -> RespuestaAPI:
+async def procesar_chat(request: MensajeRequest, bot=Depends(get_bot)) -> RespuestaAPI:
     """
     Recibe un mensaje del usuario y retorna la respuesta del bot.
 
@@ -49,9 +50,9 @@ def procesar_chat(request: MensajeRequest, bot=Depends(get_bot)) -> RespuestaAPI
     error_msg: str | None = None
 
     try:
-        historial_actualizado, tabla_html, status = bot.procesar_mensaje(
-            mensaje=request.mensaje,
-            historial=historial,
+        historial_actualizado, tabla_html, status = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: bot.procesar_mensaje(mensaje=request.mensaje, historial=historial),
         )
     except Exception as exc:
         exito = False

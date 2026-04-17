@@ -412,6 +412,119 @@ class EjecutoresAgente:
             df_vend2 = pd.DataFrame(datos_act.get('por_vendedor', []))
             return resp, df_vend2 if not df_vend2.empty else None
 
+        # ── ventas_por_marca ───────────────────────────────────────────────────
+        if accion in ('ventas_por_marca', 'ventas_mensuales_marca'):
+            try:
+                if self.odoo and self.odoo.conectado:
+                    filtro_vpm = [('order_id.state', 'in', ['sale', 'done'])]
+                    if fi:
+                        filtro_vpm.append(('order_id.date_order', '>=', fi))
+                    if ff:
+                        filtro_vpm.append(('order_id.date_order', '<=', ff))
+
+                    df_lin = self.odoo.buscar(
+                        'sale.order.line', filtro=filtro_vpm,
+                        campos=['product_id', 'price_subtotal', 'product_uom_qty'],
+                        limite=0,
+                    )
+
+                    if df_lin is not None and not df_lin.empty:
+                        df_lin = df_lin.copy()
+                        df_lin['subtotal'] = pd.to_numeric(df_lin['price_subtotal'], errors='coerce').fillna(0)
+                        df_lin['qty'] = pd.to_numeric(df_lin['product_uom_qty'], errors='coerce').fillna(0)
+
+                        # Extraer IDs de producto.product
+                        df_lin['prod_id'] = df_lin['product_id'].apply(
+                            lambda x: int(x[0]) if isinstance(x, (list, tuple)) else int(x) if str(x).isdigit() else None
+                        )
+                        prod_ids = [int(i) for i in df_lin['prod_id'].dropna().unique().tolist()]
+
+                        # Paso 2: obtener marca de product.product
+                        # Intento 1: product_brand_id (módulo OCA product_brand)
+                        marca_map = {}
+                        df_prods = None
+                        try:
+                            df_prods = self.odoo.buscar(
+                                'product.product',
+                                filtro=[('id', 'in', prod_ids)],
+                                campos=['id', 'product_brand_id', 'categ_id'],
+                                limite=0,
+                            )
+                        except Exception:
+                            pass
+
+                        if df_prods is not None and not df_prods.empty:
+                            for _, p in df_prods.iterrows():
+                                pid = int(p['id'])
+                                brand = p.get('product_brand_id', False)
+                                categ = p.get('categ_id', False)
+                                # product_brand_id tiene prioridad
+                                if brand and isinstance(brand, (list, tuple)) and brand[0]:
+                                    marca_map[pid] = str(brand[1])
+                                elif categ and isinstance(categ, (list, tuple)):
+                                    marca_map[pid] = str(categ[1])
+                                else:
+                                    marca_map[pid] = 'Sin marca'
+                        else:
+                            # Sin datos de productos → usar nombre del producto como fallback
+                            df_lin['marca'] = df_lin['product_id'].apply(
+                                lambda x: x[1] if isinstance(x, (list, tuple)) else 'Sin marca'
+                            )
+
+                        if marca_map:
+                            df_lin['marca'] = df_lin['prod_id'].map(marca_map).fillna('Sin marca')
+
+                        # Determinar si se usó marca real o categoría
+                        tiene_brand = (
+                            df_prods is not None
+                            and not df_prods.empty
+                            and 'product_brand_id' in df_prods.columns
+                            and df_prods['product_brand_id'].apply(lambda x: bool(x and isinstance(x, (list, tuple)) and x[0])).any()
+                        )
+                        etiqueta_grupo = 'Marca' if tiene_brand else 'Categoría / Marca'
+
+                        # Agregado por marca
+                        agg_marca = df_lin.groupby('marca').agg(
+                            lineas=('subtotal', 'count'),
+                            unidades=('qty', 'sum'),
+                            ventas=('subtotal', 'sum'),
+                        ).reset_index().sort_values('ventas', ascending=False)
+
+                        total_vpm = float(agg_marca['ventas'].sum())
+                        total_u = float(agg_marca['unidades'].sum())
+
+                        resp_vpm = (
+                            f"## Ventas por {etiqueta_grupo}\n\n"
+                            f"**Período:** {fi} → {ff} | "
+                            f"**Marcas:** {len(agg_marca)} | "
+                            f"**Total:** ${total_vpm:,.2f} | "
+                            f"**Unidades:** {total_u:,.0f}\n\n"
+                        )
+                        if not tiene_brand:
+                            resp_vpm += "> ℹ️ *Se está usando categoría de producto como agrupación de marca (módulo de marcas no detectado).*\n\n"
+
+                        resp_vpm += f"| # | {etiqueta_grupo} | Órdenes/Líneas | Unidades | Ventas | % del total |\n|---|---|---:|---:|---:|---:|\n"
+                        for i, (_, r) in enumerate(agg_marca.iterrows(), 1):
+                            pct = float(r['ventas']) / total_vpm * 100 if total_vpm > 0 else 0
+                            resp_vpm += (
+                                f"| {i} | **{str(r['marca'])[:35]}** | {int(r['lineas']):,} | "
+                                f"{float(r['unidades']):,.0f} | ${float(r['ventas']):,.2f} | {pct:.1f}% |\n"
+                            )
+
+                        # Top 3 marcas
+                        top3 = agg_marca.head(3)
+                        if len(top3) >= 1:
+                            pct_top3 = float(top3['ventas'].sum()) / total_vpm * 100 if total_vpm > 0 else 0
+                            resp_vpm += f"\n> 🏆 *Top 3 marcas concentran el **{pct_top3:.1f}%** del total.*\n"
+
+                        return resp_vpm, agg_marca
+            except Exception:
+                import traceback; traceback.print_exc()
+            return (
+                f"## Ventas por Marca\n\n"
+                f"No se encontraron datos de ventas por marca en el período {fi} → {ff}.", None
+            )
+
         return self._ejecutar_accion(consulta, mensaje)
 
     def _ejecutor_inventario(self, consulta, mensaje: str) -> Tuple[str, pd.DataFrame]:

@@ -1725,24 +1725,55 @@ class MotorNLPAvanzado:
             
             periodo_desc = f'últimos {cantidad} {unidad}'
         
-        # Buscar fechas específicas (dd/mm/yyyy)
-        match = self.patron_fecha.search(mensaje)
-        if match:
-            dia, mes_num, año = match.groups()
-            if len(año) == 2:
-                año = '20' + año
+        # Buscar rango explícito de fechas: "del dd/mm/yyyy al dd/mm/yyyy"
+        # Debe evaluarse ANTES del bloque de año único para no ser sobreescrito
+        _patron_rango_fechas = re.compile(
+            r'(?:del?\s*)?(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})'
+            r'\s*(?:al?|hasta|a)\s*'
+            r'(\d{1,2})[/\-](\d{1,2})[/\-](\d{2,4})',
+            re.IGNORECASE
+        )
+        _match_rango_fechas = _patron_rango_fechas.search(mensaje)
+        _fecha_especifica_detectada = False
+
+        if _match_rango_fechas:
+            d1, m1, a1, d2, m2, a2 = _match_rango_fechas.groups()
+            if len(a1) == 2: a1 = '20' + a1
+            if len(a2) == 2: a2 = '20' + a2
             try:
-                fecha = datetime(int(año), int(mes_num), int(dia))
-                fecha_inicio = fecha_fin = fecha.strftime('%Y-%m-%d')
-                periodo_desc = f'{dia}/{mes_num}/{año}'
+                f1 = datetime(int(a1), int(m1), int(d1))
+                f2 = datetime(int(a2), int(m2), int(d2))
+                # Garantizar orden correcto
+                if f2 < f1:
+                    f1, f2 = f2, f1
+                fecha_inicio = f1.strftime('%Y-%m-%d')
+                fecha_fin = f2.strftime('%Y-%m-%d')
+                periodo_desc = f"{d1}/{m1}/{a1} → {d2}/{m2}/{a2}"
+                _fecha_especifica_detectada = True
             except Exception:
                 pass
+
+        # Buscar fecha única (dd/mm/yyyy) solo si no se detectó rango
+        if not _fecha_especifica_detectada:
+            match = self.patron_fecha.search(mensaje)
+            if match:
+                dia, mes_num, año = match.groups()
+                if len(año) == 2:
+                    año = '20' + año
+                try:
+                    fecha = datetime(int(año), int(mes_num), int(dia))
+                    fecha_inicio = fecha_fin = fecha.strftime('%Y-%m-%d')
+                    periodo_desc = f'{dia}/{mes_num}/{año}'
+                    _fecha_especifica_detectada = True
+                except Exception:
+                    pass
         
         # Buscar año específico ("año 2025", "todo el año 2025", "2025")
+        # NO aplicar si ya se detectó una fecha o rango específico (evita sobreescribir)
         # Primero buscar rangos de años "2025 y 2026" o "2025 a 2026"
         patron_rango_anios = re.compile(r'(?:a[ñn]os?\s+)?(\d{4})\s*(?:y|a|al|hasta)\s*(\d{4})', re.IGNORECASE)
         match_rango = patron_rango_anios.search(mensaje_lower)
-        if match_rango:
+        if match_rango and not _fecha_especifica_detectada:
             año_inicio = int(match_rango.group(1))
             año_fin = int(match_rango.group(2))
             # Asegurar orden correcto
@@ -1752,7 +1783,7 @@ class MotorNLPAvanzado:
             fecha_inicio = f"{año_inicio}-01-01"
             fecha_fin = f"{año_fin}-12-31"
             periodo_desc = f"Años {año_inicio}-{año_fin}"
-        else:
+        elif not _fecha_especifica_detectada:
             # Buscar año único "año 2025", "todo 2025", "2025"
             patron_anio = re.compile(r'(?:todo\s+)?(?:el\s+)?(?:a[ñn]o\s+)?(\d{4})', re.IGNORECASE)
             match_anio = patron_anio.search(mensaje_lower)
@@ -1765,13 +1796,14 @@ class MotorNLPAvanzado:
                     periodo_desc = f"Año {año_encontrado}"
         
         # Buscar mes específico ("diciembre 2024", "enero 2025", etc.)
+        # NO aplicar si ya se detectó un rango o fecha exacta con dd/mm/yyyy
         meses_nombres = {
             'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
             'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
             'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
         }
         match_mes = self.patron_mes_año.search(mensaje_lower)
-        if match_mes:
+        if match_mes and not _fecha_especifica_detectada:
             nombre_mes = match_mes.group(1).lower()
             año_match = match_mes.group(2)
             

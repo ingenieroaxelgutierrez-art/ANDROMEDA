@@ -1,0 +1,56 @@
+# ============================================================
+# ANDROMEDA — Docker Compose PRODUCCIÓN
+# Uso: docker compose -f compose.prod.yml up -d
+#
+# - Código copiado dentro de la imagen (no volúmenes de código)
+# - Backend: gunicorn con workers
+# - Frontend: Next.js en modo producción (build estático)
+# - Imágenes inmutables y reproducibles
+# ============================================================
+
+services:
+
+  # ── Backend FastAPI (producción) ─────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: andromeda-backend-prod
+    restart: always
+    ports:
+      - "8000:8000"
+    volumes:
+      # Solo persistir datos, NO código fuente
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+    networks:
+      - andromeda-net
+
+  # ── Frontend Next.js (producción) ────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # NEXT_PUBLIC_* se embebe en el bundle durante "npm run build",
+        # por lo que debe pasarse como build arg, no solo como env runtime.
+        - NEXT_PUBLIC_API_URL=http://backend:8000
+    container_name: andromeda-frontend-prod
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      - backend
+    networks:
+      - andromeda-net
+
+networks:
+  andromeda-net:
+    driver: bridge

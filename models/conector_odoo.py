@@ -6,6 +6,8 @@ import odoorpc
 import json
 import logging
 import os
+import time
+import hashlib
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -71,6 +73,11 @@ class ConectorOdoo:
         # Cache de metadatos
         self._cache_modelos: Dict[str, Dict] = {}
         self._cache_campos: Dict[str, Dict] = {}
+
+        # Cache de resultados con TTL (3 minutos por defecto)
+        # Formato: { cache_key: (timestamp, resultado) }
+        self._cache_resultados: Dict[str, Tuple[float, Any]] = {}
+        self._cache_ttl: int = 180  # segundos
         
         # Modelos de uso frecuente
         self.modelos_principales = {
@@ -198,9 +205,40 @@ class ConectorOdoo:
         return True
     
     # ========================================
+    # CACHÉ DE RESULTADOS
+    # ========================================
+
+    def _make_cache_key(self, modelo: str, filtro: Any, campos: Any, limite: int, orden: Any) -> str:
+        """Genera una clave única para la caché basada en los parámetros de la query."""
+        raw = json.dumps([modelo, filtro, campos, limite, orden], sort_keys=True, default=str)
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    def _get_cache(self, key: str) -> Optional[Any]:
+        """Retorna el valor cacheado si existe y no ha expirado, o None."""
+        entry = self._cache_resultados.get(key)
+        if entry and (time.time() - entry[0]) < self._cache_ttl:
+            return entry[1]
+        return None
+
+    def _set_cache(self, key: str, valor: Any) -> None:
+        """Almacena un valor en caché con timestamp actual."""
+        self._cache_resultados[key] = (time.time(), valor)
+        # Limpieza automática si la caché crece demasiado (>200 entradas)
+        if len(self._cache_resultados) > 200:
+            ahora = time.time()
+            expiradas = [k for k, v in self._cache_resultados.items()
+                         if (ahora - v[0]) >= self._cache_ttl]
+            for k in expiradas:
+                del self._cache_resultados[k]
+
+    def limpiar_cache(self) -> None:
+        """Vacía la caché de resultados manualmente (útil tras escrituras en Odoo)."""
+        self._cache_resultados.clear()
+
+    # ========================================
     # MÉTODOS DE CONSULTA
     # ========================================
-    
+
     def contar(self, modelo: str, filtro: List = None) -> int:
         """Cuenta registros de un modelo."""
         if not self._verificar_conexion():
@@ -212,55 +250,40 @@ class ConectorOdoo:
             logger.error(f"Error contando {modelo}: {e}")
             return 0
     
-    def buscar(self, modelo: str, filtro: List = None, 
+    def buscar(self, modelo: str, filtro: List = None,
                campos: List[str] = None, limite: int = 100,
                orden: str = None, hash_prompt: str = None, prompt: str = None) -> pd.DataFrame:
         """
-        Busca registros en un modelo.
-        
-        Args:
-            modelo: Nombre técnico del modelo
-            filtro: Dominio de búsqueda Odoo
-            campos: Campos a obtener
-            limite: Máximo de registros
-            orden: Campo de ordenamiento
-            hash_prompt: Hash de prompt (opcional)
-            prompt: Prompt de búsqueda (opcional)
-        
-        Returns:
-            DataFrame con los resultados
+        Busca registros en un modelo usando search_read (1 sola llamada a Odoo).
+        Resultados cacheados en memoria por TTL (default 3 min).
         """
         if not self._verificar_conexion():
             return pd.DataFrame()
-        
+
+        # Resolver campos por defecto antes de generar la clave de caché
+        if campos is None:
+            info = self.modelos_principales.get(modelo)
+            campos = info.get('campos_default', ['name']) if info else ['name', 'id']
+
+        cache_key = self._make_cache_key(modelo, filtro, campos, limite, orden)
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            return cached
+
         try:
             inicio = datetime.utcnow()
             Model = self.odoo.env[modelo]
-            
-            # Obtener campos por defecto si no se especifican
-            if campos is None:
-                info = self.modelos_principales.get(modelo)
-                if info:
-                    campos = info.get('campos_default', ['name'])
-                else:
-                    campos = ['name', 'id']
-            
-            # Verificar que los campos existen
+
             campos_validos = self._filtrar_campos_validos(modelo, campos)
-            
-            # Buscar IDs
-            kwargs = {'limit': limite}
+
+            # search_read = 1 round trip en lugar de search() + read()
+            kwargs: Dict[str, Any] = {'limit': limite}
             if orden:
                 kwargs['order'] = orden
-            
-            ids = Model.search(filtro or [], **kwargs)
-            
-            if not ids:
-                return pd.DataFrame()
-            
-            # Leer datos
-            datos = Model.read(ids, campos_validos)
-            df = pd.DataFrame(datos)
+
+            datos = Model.search_read(filtro or [], campos_validos, **kwargs)
+            df = pd.DataFrame(datos) if datos else pd.DataFrame()
+
             duracion = int((datetime.utcnow() - inicio).total_seconds() * 1000)
             self.auditoria_queries.registrar_query(
                 usuario=self.usuario,
@@ -272,89 +295,78 @@ class ConectorOdoo:
                 hash_prompt=hash_prompt,
                 nivel="INFO"
             )
+            self._set_cache(cache_key, df)
             return df
-            
+
         except Exception as e:
             logger.error(f"Error en búsqueda: {e}")
             return pd.DataFrame()
+
     
-    def buscar_leer(self, modelo: str, filtro: List = None, 
+    def buscar_leer(self, modelo: str, filtro: List = None,
                     campos: List[str] = None, limite: int = 100,
                     orden: str = None, hash_prompt: str = None, prompt: str = None) -> List[Dict]:
         """
-        Busca registros y retorna lista de diccionarios (sin DataFrame).
-        
-        Args:
-            modelo: Nombre técnico del modelo
-            filtro: Dominio de búsqueda Odoo
-            campos: Campos a obtener
-            limite: Máximo de registros
-            orden: Campo de ordenamiento
-            hash_prompt: Hash de prompt (opcional)
-            prompt: Prompt de búsqueda (opcional)
-        
-        Returns:
-            Lista de diccionarios con los resultados
+        Busca registros y retorna lista de diccionarios usando search_read (1 round trip).
+        Resultados cacheados en memoria por TTL (default 3 min).
         """
         if not self._verificar_conexion():
             return []
-        
+
+        if campos is None:
+            info = self.modelos_principales.get(modelo)
+            campos = info.get('campos_default', ['name']) if info else ['name', 'id']
+
+        cache_key = self._make_cache_key(modelo, filtro, campos, limite, orden)
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            return cached
+
         try:
             inicio = datetime.utcnow()
             Model = self.odoo.env[modelo]
-            
-            # Obtener campos por defecto si no se especifican
-            if campos is None:
-                info = self.modelos_principales.get(modelo)
-                if info:
-                    campos = info.get('campos_default', ['name'])
-                else:
-                    campos = ['name', 'id']
-            
-            # Verificar que los campos existen
             campos_validos = self._filtrar_campos_validos(modelo, campos)
-            
-            # Buscar IDs
-            kwargs = {'limit': limite}
+
+            kwargs: Dict[str, Any] = {'limit': limite}
             if orden:
                 kwargs['order'] = orden
-            
-            ids = Model.search(filtro or [], **kwargs)
-            
-            if not ids:
-                return []
-            
-            # Leer datos en lotes para evitar "Expected singleton" en campos computados
-            BATCH_SIZE = 200
-            datos = []
-            for i in range(0, len(ids), BATCH_SIZE):
-                lote_ids = ids[i:i + BATCH_SIZE]
-                try:
-                    datos.extend(Model.read(lote_ids, campos_validos))
-                except Exception as e_lote:
-                    if 'Expected singleton' in str(e_lote):
-                        # Fallback: leer uno por uno para registros problemáticos
-                        for rid in lote_ids:
-                            try:
-                                datos.extend(Model.read([rid], campos_validos))
-                            except Exception:
-                                pass  # Omitir registros con error de campo computado
-                    else:
-                        raise
-            
-            # Convertir frozendict/tuplas inmutables de Odoo a tipos serializables
+
+            try:
+                # Intento con search_read (1 round trip)
+                datos = Model.search_read(filtro or [], campos_validos, **kwargs)
+            except Exception:
+                # Fallback al método anterior search+read por lotes
+                ids = Model.search(filtro or [], **kwargs)
+                datos = []
+                if ids:
+                    BATCH_SIZE = 200
+                    for i in range(0, len(ids), BATCH_SIZE):
+                        lote_ids = ids[i:i + BATCH_SIZE]
+                        try:
+                            datos.extend(Model.read(lote_ids, campos_validos))
+                        except Exception as e_lote:
+                            if 'Expected singleton' in str(e_lote):
+                                for rid in lote_ids:
+                                    try:
+                                        datos.extend(Model.read([rid], campos_validos))
+                                    except Exception:
+                                        pass
+                            else:
+                                raise
+
+            # Normalizar frozendict / tuples de Odoo a tipos Python planos
             datos_limpios = []
             for registro in datos:
                 reg_limpio = {}
                 for k, v in registro.items():
-                    if hasattr(v, 'items'):  # frozendict u otro mapping
+                    if hasattr(v, 'items'):
                         reg_limpio[k] = dict(v)
                     elif isinstance(v, (list, tuple)):
-                        reg_limpio[k] = [dict(item) if hasattr(item, 'items') else item for item in v]
+                        reg_limpio[k] = [dict(i) if hasattr(i, 'items') else i for i in v]
                     else:
                         reg_limpio[k] = v
                 datos_limpios.append(reg_limpio)
-            
+
             if hash_prompt is None and prompt:
                 hash_prompt = firmar_prompt(prompt)
             duracion = int((datetime.utcnow() - inicio).total_seconds() * 1000)
@@ -368,11 +380,13 @@ class ConectorOdoo:
                 hash_prompt=hash_prompt,
                 nivel="INFO"
             )
+            self._set_cache(cache_key, datos_limpios)
             return datos_limpios
-            
+
         except Exception as e:
             logger.error(f"Error en buscar_leer: {e}")
             return []
+
     
     def _filtrar_campos_validos(self, modelo: str, campos: List[str]) -> List[str]:
         """Filtra campos que existen en el modelo."""

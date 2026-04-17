@@ -58,8 +58,9 @@ class ConectorOllama:
     Ollama permite correr modelos como Llama 3, Mistral, Phi-3 localmente.
     """
     
-    def __init__(self, base_url: str = "http://localhost:11434"):
-        self.base_url = base_url
+    def __init__(self, base_url: str = None):
+        import os
+        self.base_url = base_url or os.getenv("OLLAMA_HOST", "http://localhost:11434")
         self.modelo_default = "llama3.2"  # Modelo por defecto
         self.timeout = 180  # Segundos (aumentado para prompts largos)
         self.disponible = False

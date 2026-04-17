@@ -602,6 +602,20 @@ INTENCIONES_EXTENDIDAS = {
         'accion': 'clientes_nuevos_vs_recurrentes'
     },
 
+    'ventas_por_marca': {
+        'patrones': [
+            r'ventas?\s*(por|de|de\s*cada)\s*(marca|fabricante|brand)',
+            r'(marca|fabricante|brand)\s*(y|,)?\s*(ventas?|ingresos?|montos?)',
+            r'(cu[aá]nto\s*(vende|vendemos?|se\s*vende))\s*(cada|por)\s*(marca|fabricante)',
+            r'(an[aá]lisis|desglose|resumen|reporte)\s*(de\s*)?ventas?\s*(por|de)\s*(marca|fabricante)',
+            r'(ranking|top)\s*(de\s*)?(marcas?|fabricantes?)\s*(en\s*)?(ventas?|ingresos?)?',
+            r'(semana|mes|d[ií]a|a[nñ]o)\s*(por|de)\s*(marca|fabricante)',
+            r'(marca|fabricante)\s*(de\s*(la\s*)?semana|del\s*mes|del\s*a[nñ]o)',
+        ],
+        'prioridad': 16,
+        'accion': 'ventas_por_marca'
+    },
+
     'descuentos_aplicados': {
         'patrones': [
             r'(descuentos?)\s*(aplicados?|otorgados?|dados?)',

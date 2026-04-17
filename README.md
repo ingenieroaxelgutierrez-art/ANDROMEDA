@@ -1,9 +1,19 @@
-# ANDROMEDA — A PREDICTIVA EMPRESARIAL PARA ODOO
-# Advanced Neural Data Resource for Operations, Management & Enterprise Decision Analytics
+# ANDROMEDA — Agente Predictivo Empresarial para Odoo
 
-> **v 1.10.0** · Fases 0–5 completadas · Post-lanzamiento activo · **695 tests** · Python 3.11 · FastAPI 0.133 · Next.js 14
+> **Advanced Neural Data Resource for Operations, Management & Enterprise Decision Analytics**
 
-ANDROMEDA es un agente conversacional de IA de propósito empresarial diseñado para conectarse directamente a instancias Odoo y responder consultas en lenguaje natural sobre datos de negocio en tiempo real. El sistema combina un pipeline NLP multi-capa, un motor de orquestación multi-agente, RAG con memoria vectorial persistente, ML/DL híbrido y una capa API REST con frontend React — todo ejecutado de forma local, sin dependencias de servicios externos.
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/FastAPI-0.133-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/Next.js-14.2-000000?logo=next.js&logoColor=white" alt="Next.js">
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker">
+  <img src="https://img.shields.io/badge/Tests-695%20passing-22c55e?logo=pytest&logoColor=white" alt="Tests">
+  <img src="https://img.shields.io/badge/Ollama-local%20LLM-FF6B35" alt="Ollama">
+  <img src="https://img.shields.io/badge/Odoo-14%20→%2019+-714B67?logo=odoo&logoColor=white" alt="Odoo">
+  <img src="https://img.shields.io/badge/License-MIT-blue" alt="License">
+</p>
+
+ANDROMEDA es un agente conversacional de IA de propósito empresarial que se conecta directamente a instancias Odoo y responde consultas en lenguaje natural sobre datos de negocio en tiempo real. Combina un pipeline NLP multi-capa, orquestación multi-agente con 13 agentes de dominio, RAG con memoria vectorial persistente, ML/DL híbrido y una API REST con frontend React — **100% local, zero data egress**.
 
 ---
 
@@ -23,9 +33,10 @@ ANDROMEDA es un agente conversacional de IA de propósito empresarial diseñado 
 12. [Seguridad](#12-seguridad)
 13. [Estructura del proyecto](#13-estructura-del-proyecto)
 14. [Instalación y configuración](#14-instalación-y-configuración)
-15. [Testing](#15-testing)
-16. [Despliegue](#16-despliegue)
-17. [Troubleshooting](#17-troubleshooting)
+15. [Docker](#15-docker)
+16. [Testing](#16-testing)
+17. [Despliegue](#17-despliegue)
+18. [Troubleshooting](#18-troubleshooting)
 
 ---
 
@@ -63,8 +74,9 @@ Input ──► Normalización ──► NLP (intención + entidades) ──► 
 | Semantic store | ChromaDB persistente | 6 colecciones, EF lazy post-init, max 10K docs/col, purga selectiva |
 | Knowledge graph | NetworkX DiGraph | 14 tipos nodo, 9 relaciones, decay 90d, poda proactiva, límites 500/2000 |
 | Prompt builder | Dinámico | Inyección: memoria vectorial + grafo + datos Odoo real-time |
-| LLM backend | Ollama local | Llama 3.2, Mistral, DeepSeek-R1:8b — zero data egress |
+| LLM runtime | Ollama local | Llama 3.2, Mistral, DeepSeek-R1:8b — zero data egress |
 | Query generator | `GeneradorQueries` | NL → Query Odoo; guardrails: `CAMPOS_PROHIBIDOS` + `MODELOS_PROHIBIDOS` |
+| Configuración host | Variable `OLLAMA_HOST` | Default: `http://localhost:11434`; en Docker: `http://host.docker.internal:11434` |
 
 ---
 
@@ -88,6 +100,7 @@ Input ──► Normalización ──► NLP (intención + entidades) ──► 
 | Visualización | Plotly + Matplotlib | Interactivas (HTML) + estáticas (PDF) |
 | Reportes | OpenPyXL + ReportLab | Excel multi-hoja + PDF profesional |
 | UI debug | Gradio Blocks | Chat + sidebar + voz + file download |
+| Contenedores | Docker + Compose | Dev (hot reload) + Prod (Gunicorn 2w + Next.js standalone) |
 | Logging | SQLite + RotatingFileHandler | `FiltroCredenciales` para redacción automática |
 
 ---
@@ -230,6 +243,7 @@ Inferencia 100% local — **zero data egress**. Los datos de Odoo nunca salen de
 | Contexto | Prompts dinámicos: datos Odoo en tiempo real + memoria vectorial + grafo de conocimiento |
 | Guardrails | `CAMPOS_PROHIBIDOS` (password, tokens, OAuth keys), `MODELOS_PROHIBIDOS` (ir.config_parameter, auth_totp, etc.) |
 | Límite de registros | Máximo 500 por query generada por LLM |
+| Configuración | Variable `OLLAMA_HOST` — por defecto `http://localhost:11434`; en Docker: `http://host.docker.internal:11434` |
 
 ---
 
@@ -407,7 +421,7 @@ ANDROMEDA/
 │       │   └── jwt_utils.py         # crear_access_token, crear_refresh_token, decodificadores
 │       ├── routers/
 │       │   ├── auth.py              # /auth/* — login, refresh, me, perfil, usuarios, logout
-│       │   ├── chat.py              # POST /chat — stateless, contexto server-side
+│       │   ├── chat.py              # POST /chat — async, run_in_executor, stateless
 │       │   ├── salud.py             # GET /health, GET /status
 │       │   ├── reportes.py          # GET /reportes, POST /reportes/generar
 │       │   ├── configuracion.py     # CRUD /configuracion — Fernet encrypt (legacy)
@@ -423,7 +437,7 @@ ANDROMEDA/
 │   └── motor_bi_experto.py          # MotorBIExperto — BI, KPIs, outliers
 │
 ├── models/
-│   ├── conector_odoo.py             # ConectorOdoo — OdooRPC, cache, DataFrame, SIEM audit
+│   ├── conector_odoo.py             # ConectorOdoo — OdooRPC, cache TTL 3min, search_read, SIEM
 │   ├── modelos_odoo.py              # ModeloOdoo — 40+ modelos Odoo mapeados
 │   ├── db_saas.py                   # ORM SaaS: Empresa, Usuario, SesionLog, SesionContexto
 │   └── odoo_versions.py             # ODOO_VERSION_MAP v14–v19, ERPAdapterProtocol
@@ -440,10 +454,12 @@ ANDROMEDA/
 │   │   └── kpis_financieros.py      # KPIsFinancieros — dashboard ejecutivo
 │   ├── formatters/
 │   │   └── formateador_respuestas.py  # FormateadorRespuestas — 41 métodos Markdown
+│   ├── knowledge/
+│   │   └── procesador_manuales.py   # ProcesadorManuales — indexación + URLs de imágenes
 │   ├── llm/
-│   │   ├── cerebro_llm.py           # AgenteAndromeda — orquestador LLM
-│   │   ├── generador_queries.py     # GeneradorQueries — NL → Query Odoo + guardrails
-│   │   └── ollama_integrador.py     # ConectorOllama — HTTP Ollama + esta_disponible()
+│       ├── cerebro_llm.py           # AgenteAndromeda — orquestador LLM, lee OLLAMA_HOST
+│       ├── generador_queries.py     # GeneradorQueries — NL → Query Odoo + guardrails
+│       └── ollama_integrador.py     # ConectorOllama — HTTP Ollama, lee OLLAMA_HOST
 │   ├── memory/
 │   │   ├── memoria_vectorial.py     # MemoriaVectorial — ChromaDB, EF lazy, purga selectiva
 │   │   ├── memoria_jerarquica.py    # MemoriaJerarquica — 3 niveles + sanitización metadatos
@@ -507,37 +523,44 @@ ANDROMEDA/
 │   ├── test_contratos.py            # 78 tests — contratos Protocol (Fase 2)
 │   └── ...                          # 14 archivos adicionales: NLP, Core, ML, Memoria, etc.
 │
-├── data/
-│   ├── andromeda_saas.db            # BD SaaS SQLite (dev)
-│   ├── memoria/chroma.sqlite3       # ChromaDB persistente
-│   └── embeddings_cache/            # Cache .npz + .json de embeddings NLP
-│
-├── docs/
-│   ├── FLOW_PIPELINE_PRINCIPAL.md   # Pipeline completo con diagrama Mermaid
-│   ├── FLOW_NUEVO_AGENTE.md         # Guía para añadir un nuevo agente (8 pasos)
-│   ├── FLOW_SOPORTE_ODOO_VERSION.md # Soporte a nueva versión Odoo
-│   └── UML_ANDROMEDA.md             # Diagramas UML: Clases, Secuencia, Componentes
-│
-├── main.py                          # Entrypoint: web (Gradio) / consola / api
-├── requirements.txt                 # Dependencias fijadas con rangos semver
-├── pytest.ini                       # Configuración pytest + markers
-└── .env.example                     # Plantilla de variables de entorno
+│   ├── data/
+│   │   ├── andromeda_saas.db            # BD SaaS SQLite (dev)
+│   │   ├── memoria/chroma.sqlite3       # ChromaDB persistente
+│   │   ├── manuales/                    # PDFs + imágenes extraídas + indice_conocimiento.json
+│   │   └── embeddings_cache/            # Cache .npz + .json de embeddings NLP
+│   │
+│   ├── docs/
+│   │   ├── FLOW_PIPELINE_PRINCIPAL.md   # Pipeline completo con diagrama Mermaid
+│   │   ├── FLOW_NUEVO_AGENTE.md         # Guía para añadir un agente (8 pasos)
+│   │   ├── FLOW_SOPORTE_ODOO_VERSION.md # Soporte a nueva versión Odoo
+│   │   └── UML_ANDROMEDA.md             # Diagramas UML: Clases, Secuencia, Componentes
+│   │
+│   ├── Dockerfile                       # Backend dev (uvicorn --reload)
+│   ├── Dockerfile.prod                  # Backend prod (gunicorn 2 workers)
+│   ├── compose.yml                      # Entorno de desarrollo con volúmenes + hot reload
+│   ├── compose.prod.yml                 # Entorno de producción
+│   ├── .dockerignore
+│   ├── main.py                          # Entrypoint: web (Gradio) / consola / api
+│   ├── requirements.txt                 # Dependencias fijadas con rangos semver
+│   ├── pytest.ini                       # Configuración pytest + markers
+│   └── .env.example                     # Plantilla de variables de entorno
 ```
 
 ---
 
 ## 14. Instalación y configuración
 
-### Requisitos
+### Requisitos del sistema
 
-| Requisito | Mínimo |
-|---|---|
-| Python | 3.11+ |
-| RAM | 8 GB (16 GB recomendado con LLM local) |
-| Node.js | 18+ (solo para frontend) |
-| Ollama | Opcional — requerido para funcionalidades LLM |
+| Requisito | Mínimo | Recomendado |
+|---|---|---|
+| Python | 3.11+ | 3.11 |
+| RAM | 8 GB | 16 GB (con LLM local) |
+| Node.js | 18+ | 20 LTS (solo frontend) |
+| Docker | 24+ | 29+ con Compose v2 |
+| Ollama | — | Requerido para funcionalidades LLM |
 
-### Setup
+### Setup manual (sin Docker)
 
 ```bash
 # 1. Clonar e instalar
@@ -583,11 +606,78 @@ python main.py web
 | `ODOO_API_KEY` | API key de Odoo | ✅ |
 | `SECRET_KEY` | Clave para JWT + Fernet (≥ 32 chars) | ✅ |
 | `DB_URL` | SQLAlchemy URL (default: SQLite local) | — |
-| `LLM_URL` | Endpoint Ollama (default: `http://localhost:11434`) | — |
+| `OLLAMA_HOST` | Endpoint Ollama (default: `http://localhost:11434`) | — |
+| `API_BASE_URL` | URL pública del backend para URLs de imágenes de manuales (default: `http://localhost:8000`) | — |
 
 ---
 
-## 15. Testing
+## 15. Docker
+
+El entorno Docker está disponible para desarrollo con hot reload y para producción optimizada.
+
+### Desarrollo (hot reload)
+
+```bash
+# Levantar backend + frontend con volúmenes
+docker compose up -d
+
+# Solo backend
+docker compose up -d backend
+
+# Solo frontend
+docker compose up -d frontend
+
+# Ver logs en tiempo real
+docker compose logs -f backend
+docker compose logs -f frontend
+```
+
+El `compose.yml` monta el código fuente como volumen: cualquier cambio en el editor se refleja automáticamente sin reconstruir la imagen.
+
+| Servicio | URL | Puerto |
+|---|---|---|
+| Backend FastAPI | `http://localhost:8000` | 8000 |
+| Swagger UI | `http://localhost:8000/docs` | 8000 |
+| Frontend Next.js | `http://localhost:3000` | 3000 |
+
+### Variables de entorno en Docker
+
+El `compose.yml` inyecta automáticamente:
+
+```yaml
+environment:
+  - PYTHONPATH=/app
+  - API_BASE_URL=http://localhost:8000
+  - OLLAMA_HOST=http://host.docker.internal:11434  # Ollama en el host Windows/Mac
+```
+
+> **Nota:** `host.docker.internal` resuelve al host desde dentro del contenedor. Ollama debe estar ejecutándose en el host (`ollama serve`).
+
+### Producción
+
+```bash
+# Build y arranque en modo producción
+docker compose -f compose.prod.yml up -d --build
+
+# Gunicorn 2 workers (backend) + Next.js standalone (frontend)
+```
+
+### Archivos Docker
+
+| Archivo | Descripción |
+|---|---|
+| `Dockerfile` | Backend dev — uvicorn `--reload` |
+| `Dockerfile.prod` | Backend prod — Gunicorn 2 workers |
+| `frontend/Dockerfile` | Frontend dev — `next dev` con hot reload |
+| `frontend/Dockerfile.prod` | Frontend prod — multistage: `next build --standalone` |
+| `compose.yml` | Desarrollo: volúmenes + hot reload |
+| `compose.prod.yml` | Producción: imágenes build con `NEXT_PUBLIC_API_URL` como build arg |
+| `.dockerignore` | Excluye `.env`, `__pycache__`, `frontend/`, etc. |
+| `frontend/.dockerignore` | Excluye `node_modules`, `.next/`, etc. |
+
+---
+
+## 16. Testing
 
 ```bash
 # Suite completa
@@ -611,7 +701,9 @@ python -m pytest tests/test_auth.py -v
 
 ---
 
-## 16. Despliegue
+## 17. Despliegue
+
+### Git
 
 ```bash
 # Inicializar repositorio
@@ -626,23 +718,52 @@ git branch -M main && git push -u origin main
 
 Para producción, configurar `DB_URL=postgresql://...` en `.env` y servir el frontend compilado con `npm run build`.
 
+### Producción sin Docker
+
+```bash
+# Backend con Gunicorn
+gunicorn app.api.main_api:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+
+# Frontend compilado
+cd frontend && npm run build && npm start
+```
+
+### Producción con Docker Compose
+
+```bash
+docker compose -f compose.prod.yml up -d --build
+```
+
+### Migración SQLite → PostgreSQL
+
+Cambiar `DB_URL` en `.env`:
+
+```env
+DB_URL=postgresql://usuario:clave@host:5432/andromeda
+```
+
+SQLAlchemy crea las tablas automáticamente en el primer arranque.
+
 ---
 
-## 17. Troubleshooting
+## 18. Troubleshooting
 
 | Síntoma | Causa probable | Resolución |
 |---|---|---|
-| `Ollama Connection Error` | Servicio Ollama inactivo | `ollama serve` → verificar `http://localhost:11434` |
+| `No se puede conectar a Ollama en http://localhost:11434` | Servicio Ollama inactivo | Ejecutar `ollama serve` en el host |
+| `No se puede conectar a Ollama` dentro de Docker | `OLLAMA_HOST` apuntando a `localhost` | Verificar que `compose.yml` tiene `OLLAMA_HOST=http://host.docker.internal:11434` |
 | `OdooRPC AuthenticationError` | Credenciales incorrectas en `.env` | Revisar `ODOO_URL`, `ODOO_DB`, `ODOO_USER`, `ODOO_API_KEY` |
+| Imágenes de manuales no cargan | Rutas absolutas de Windows en el JSON | Fix aplicado en `procesador_manuales.py` — verificar que el contenedor está actualizado |
 | `no such column: usuarios.password_hash` | BD creada antes de Fase 5 | `ALTER TABLE usuarios ADD COLUMN password_hash TEXT` |
-| `404 en /admin/dashboard` | Backend sin rutas nuevas | Reiniciar uvicorn con el código actualizado |
-| `403 Solo administradores` | Token con rol incorrecto | Hacer logout, login de nuevo para regenerar el token con el rol correcto |
+| `404 en /admin/dashboard` | Backend sin routers nuevos | Reiniciar uvicorn con el código actualizado |
+| `403 Solo administradores` | Token con rol incorrecto | Hacer logout → login de nuevo para regenerar el token con el rol correcto |
 | `rol_usuario enum` en SQLite | BD creada con roles antiguos (operador/viewer) | Borrar `data/andromeda_saas.db` y reiniciar (SQLite no soporta ALTER ENUM) |
 | `ChromaDB Lock` | Múltiples instancias abiertas | Cerrar todos los procesos ANDROMEDA y reiniciar |
-| `CUDA Memory Error` | Modelo LLM supera VRAM disponible | Usar modelo más pequeño en Ollama o forzar CPU |
-| Frontend `connection refused` | Backend FastAPI no está corriendo | Arrancar uvicorn en puerto 8000 |
+| `CUDA Memory Error` | Modelo LLM supera VRAM disponible | Usar modelo más pequeño en Ollama o forzar CPU con `OLLAMA_NUM_GPU=0` |
+| Frontend `connection refused` | Backend FastAPI no está corriendo | Arrancar uvicorn / `docker compose up -d backend` |
+| `Object of type DataFrame is not JSON serializable` | Resultado de query no serializable | Bug conocido en `conector_odoo.py` para `stock.warehouse` — en seguimiento |
 | `Import Error` en tests | Dependencias desactualizadas | `pip install -r requirements.txt` |
-| Backend se detiene solo | Terminal cerrada | Usar gestor de procesos (systemd, PM2, screen) |
+| Backend en Docker no recarga cambios | Volumen no montado correctamente | Verificar `volumes:` en `compose.yml`; reiniciar con `docker compose up -d` |
 
 ---
 
@@ -650,4 +771,6 @@ Para producción, configurar `DB_URL=postgresql://...` en `.env` y servir el fro
 
 **Ing. Axel Gutiérrez** — Tech Lead · Software Engineer
 
-[LinkedIn](https://www.linkedin.com/in/axel-ismael-gutierrez-gutierrez-01b959333) · [Portfolio](https://ingenieroaxelgutierrez-art.github.io/Portafolio/)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Axel%20Gutiérrez-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/axel-ismael-gutierrez-gutierrez-01b959333)
+[![Portfolio](https://img.shields.io/badge/Portfolio-ingenieroaxelgutierrez-FF6B35)](https://ingenieroaxelgutierrez-art.github.io/Portafolio/)
+[![GitHub](https://img.shields.io/badge/GitHub-ingenieroaxelgutierrez--art-181717?logo=github&logoColor=white)](https://github.com/ingenieroaxelgutierrez-art)
