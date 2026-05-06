@@ -1,30 +1,32 @@
 # ============================================================
 # ANDROMEDA — app.api.routers.auth
-# Autenticación JWT (Fase 5)
+# Autenticación JWT (Fase 5 + Sprint 1 Seguridad)
 #
 # Rutas:
 #   POST /auth/login     — autentica usuario, emite access + refresh token
-#   POST /auth/refresh   — renueva access_token con refresh_token válido
+#   POST /auth/refresh   — renueva access_token con refresh_token (cookie)
 #   GET  /auth/me        — perfil del usuario autenticado
 #   POST /auth/usuarios  — crea usuario (solo admin)
-#   POST /auth/logout    — endpoint simbólico (logout stateless)
+#   POST /auth/logout    — limpia cookie httpOnly + logout stateless
 #
 # Diseño:
-#   - access_token: 15 min (ACCESS_TOKEN_EXPIRE_MINUTES)
-#   - refresh_token: 7 días (REFRESH_TOKEN_EXPIRE_DAYS)
+#   - access_token  : 15 min en body Authorization
+#   - refresh_token : 7 días en httpOnly cookie (Path=/auth) — NO en body
 #   - HS256 firmado con SECRET_KEY
-#   - Stateless: sin blacklist; access corto + HTTPS en producción
+#   - COOKIE_SECURE=true en producción (HTTPS)
 # ============================================================
 
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.api.auth.jwt_utils import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
     crear_access_token,
     crear_refresh_token,
     decodificar_refresh_token,
@@ -38,6 +40,9 @@ from app.api.schemas import (
     UsuarioCrearRequest,
     PerfilActualizar,
 )
+
+_COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+_COOKIE_MAX_AGE: int = REFRESH_TOKEN_EXPIRE_DAYS * 86400  # segundos
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
@@ -98,12 +103,13 @@ def _get_token_payload(
 # ── Endpoints públicos ────────────────────────────────────────────────────────
 
 @router.post("/login", summary="Iniciar sesión")
-def login(datos: LoginRequest) -> TokenResponse:
+def login(datos: LoginRequest, response: Response) -> TokenResponse:
     """
     Autentica usuario con email + contraseña.
 
-    - ``access_token``: 15 min con claims usuario/rol/empresa.
-    - ``refresh_token``: 7 días para renovar el access_token.
+    - ``access_token`` (body): 15 min con claims usuario/rol/empresa.
+    - ``refresh_token`` (httpOnly cookie): 7 días, Path=/auth.
+      Al ser httpOnly, JavaScript no puede leerlo — protección XSS.
     - Verificación timing-safe con bcrypt (passlib).
     - HTTP 401 genérico — no revela si el email existe.
     """
@@ -116,25 +122,52 @@ def login(datos: LoginRequest) -> TokenResponse:
     if not usuario or not usuario.check_password(datos.password):
         raise _no_autorizado
 
+    refresh_token = crear_refresh_token(usuario_id=usuario.id)
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        samesite="lax",
+        secure=_COOKIE_SECURE,
+        max_age=_COOKIE_MAX_AGE,
+        path="/auth",
+    )
+
     return TokenResponse(
         access_token=crear_access_token(
             usuario_id=usuario.id,
             email=usuario.email,
             rol=usuario.rol,
             empresa_id=usuario.empresa_id,
+            sub_rol=usuario.sub_rol,
+            area_id=usuario.area_id,
         ),
-        refresh_token=crear_refresh_token(usuario_id=usuario.id),
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
 
 @router.post("/refresh", summary="Renovar access token")
-def refresh(datos: RefreshRequest) -> TokenResponse:
+def refresh(request: Request, response: Response, datos: RefreshRequest = None) -> TokenResponse:
     """
-    Renueva el ``access_token`` usando un ``refresh_token`` válido.
+    Renueva el ``access_token`` usando el ``refresh_token``.
+
+    Lee el token desde la cookie httpOnly ``refresh_token`` (path=/auth).
+    Si no está en cookie, acepta el campo del body por compatibilidad.
     Verifica que el usuario siga activo en BD antes de emitir el nuevo token.
+    Emite una nueva cookie con el refresh_token rotado.
     """
-    usuario_id = decodificar_refresh_token(datos.refresh_token)
+    # Cookie httpOnly es la fuente autoritativa; body es fallback de compatibilidad
+    token = request.cookies.get("refresh_token")
+    if not token and datos and datos.refresh_token:
+        token = datos.refresh_token
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token no encontrado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    usuario_id = decodificar_refresh_token(token)
     if not usuario_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -148,24 +181,39 @@ def refresh(datos: RefreshRequest) -> TokenResponse:
             detail="Usuario no encontrado o inactivo",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Rotar el refresh_token (emitir uno nuevo) para limitar la ventana de abuso
+    nuevo_refresh = crear_refresh_token(usuario_id=usuario.id)
+    response.set_cookie(
+        key="refresh_token",
+        value=nuevo_refresh,
+        httponly=True,
+        samesite="lax",
+        secure=_COOKIE_SECURE,
+        max_age=_COOKIE_MAX_AGE,
+        path="/auth",
+    )
+
     return TokenResponse(
         access_token=crear_access_token(
             usuario_id=usuario.id,
             email=usuario.email,
             rol=usuario.rol,
             empresa_id=usuario.empresa_id,
+            sub_rol=usuario.sub_rol,
+            area_id=usuario.area_id,
         ),
-        refresh_token=crear_refresh_token(usuario_id=usuario.id),
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, summary="Cerrar sesión")
-def logout() -> None:
+def logout(response: Response) -> None:
     """
-    Logout stateless. El cliente descarta ambos tokens.
-    Para invalidación inmediata en producción: considerar blocklist en Redis.
+    Logout: elimina la cookie httpOnly refresh_token del navegador.
+    El cliente también debe descartar el access_token del lado cliente.
     """
+    response.delete_cookie(key="refresh_token", path="/auth")
     return None
 
 
@@ -219,6 +267,8 @@ def crear_usuario(
             email=datos.email,
             empresa_id=datos.empresa_id,
             rol=datos.rol,
+            sub_rol=datos.sub_rol,
+            area_id=datos.area_id,
             activo=True,
             creado_en=datetime.now(timezone.utc),
         )

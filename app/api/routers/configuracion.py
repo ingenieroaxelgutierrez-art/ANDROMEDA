@@ -14,11 +14,12 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import List
+from typing import Annotated, List
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.schemas import EmpresaCrear, EmpresaRespuesta, EmpresaActualizar
+from app.api.dependencies import get_solo_admin
 from models.db_saas import get_session, Empresa, inicializar_db
 
 router = APIRouter(prefix="/configuracion", tags=["Configuración"])
@@ -37,9 +38,11 @@ def _empresa_o_404(session, empresa_id: str) -> Empresa:
 
 
 @router.get("", response_model=List[EmpresaRespuesta], summary="Listar empresas")
-def listar_empresas() -> List[EmpresaRespuesta]:
+def listar_empresas(
+    _: Annotated[dict, Depends(get_solo_admin)],
+) -> List[EmpresaRespuesta]:
     """
-    Lista todas las empresas activas.
+    Lista todas las empresas activas. Solo rol admin.
     Las credenciales siempre están enmascaradas en la respuesta.
     """
     inicializar_db()
@@ -57,7 +60,10 @@ def listar_empresas() -> List[EmpresaRespuesta]:
     status_code=status.HTTP_201_CREATED,
     summary="Crear empresa",
 )
-def crear_empresa(datos: EmpresaCrear) -> EmpresaRespuesta:
+def crear_empresa(
+    datos: EmpresaCrear,
+    _: Annotated[dict, Depends(get_solo_admin)],
+) -> EmpresaRespuesta:
     """
     Crea una nueva empresa con credenciales Odoo/ERP cifradas.
 
@@ -94,7 +100,10 @@ def crear_empresa(datos: EmpresaCrear) -> EmpresaRespuesta:
 
 
 @router.get("/{empresa_id}", response_model=EmpresaRespuesta, summary="Obtener empresa")
-def obtener_empresa(empresa_id: str) -> EmpresaRespuesta:
+def obtener_empresa(
+    empresa_id: str,
+    _: Annotated[dict, Depends(get_solo_admin)],
+) -> EmpresaRespuesta:
     """
     Retorna los datos de una empresa.
     Las credenciales siempre están enmascaradas.
@@ -109,7 +118,11 @@ def obtener_empresa(empresa_id: str) -> EmpresaRespuesta:
 
 
 @router.put("/{empresa_id}", response_model=EmpresaRespuesta, summary="Actualizar empresa")
-def actualizar_empresa(empresa_id: str, datos: EmpresaActualizar) -> EmpresaRespuesta:
+def actualizar_empresa(
+    empresa_id: str,
+    datos: EmpresaActualizar,
+    _: Annotated[dict, Depends(get_solo_admin)],
+) -> EmpresaRespuesta:
     """
     Actualiza datos de una empresa.
     Si se incluye ``odoo_password``, se re-cifra inmediatamente.
@@ -153,7 +166,10 @@ def actualizar_empresa(empresa_id: str, datos: EmpresaActualizar) -> EmpresaResp
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Desactivar empresa",
 )
-def desactivar_empresa(empresa_id: str) -> None:
+def desactivar_empresa(
+    empresa_id: str,
+    _: Annotated[dict, Depends(get_solo_admin)],
+) -> None:
     """
     Realiza un soft-delete de la empresa (``activa = False``).
     Los datos y el historial se conservan para auditoría.

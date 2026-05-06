@@ -37,3 +37,9 @@ yarn-error.log*
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Tests — excluidos del contexto de producción
+# (no forman parte del bundle de Next.js)
+src/__tests__/
+jest.config.ts
+jest.config.js

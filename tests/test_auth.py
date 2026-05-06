@@ -153,6 +153,21 @@ class TestJwtUtils:
         assert payload["rol"] == "admin"
         assert payload["empresa_id"] == eid
         assert payload["tipo"] == "access"
+        # Sprint 2: sin sub_rol/area_id NO deben aparecer en el claim
+        assert "sub_rol" not in payload
+        assert "area_id" not in payload
+
+    def test_access_token_con_sub_rol_y_area_id(self):
+        """Sprint 2: claims opcionales cuando se pasan explícitamente."""
+        from app.api.auth.jwt_utils import crear_access_token, decodificar_access_token
+        uid = str(uuid.uuid4())
+        aid = str(uuid.uuid4())
+        token = crear_access_token(uid, "u@test.com", "agente", "eid",
+                                   sub_rol="gerente", area_id=aid)
+        payload = decodificar_access_token(token)
+        assert payload is not None
+        assert payload["sub_rol"] == "gerente"
+        assert payload["area_id"] == aid
 
     def test_refresh_token_decodifica_correctamente(self):
         from app.api.auth.jwt_utils import crear_refresh_token, decodificar_refresh_token
@@ -303,10 +318,14 @@ class TestLogin:
         _, email = operador
         r = _login(api_client, email)
         data = r.json()
+        # access_token en body
         assert "access_token" in data
-        assert "refresh_token" in data
         assert data["token_type"] == "bearer"
         assert data["expires_in"] > 0
+        # refresh_token NO debe ir en el body (Sprint 1: httpOnly cookie)
+        assert "refresh_token" not in data
+        # Sí debe estar en la cookie Set-Cookie
+        assert "refresh_token" in r.headers.get("set-cookie", "")
 
     def test_login_access_token_es_jwt_valido(self, api_client, empresa_id, operador):
         _, email = operador
@@ -361,14 +380,17 @@ class TestRefresh:
 
     def test_refresh_exitoso_200(self, api_client, empresa_id, operador):
         _, email = operador
-        tokens = _login(api_client, email).json()
-        r = api_client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+        r_login = _login(api_client, email)
+        # refresh_token viaja como httpOnly cookie (Sprint 1)
+        refresh_cookie = r_login.cookies.get("refresh_token")
+        r = api_client.post("/auth/refresh", cookies={"refresh_token": refresh_cookie})
         assert r.status_code == 200
 
     def test_refresh_emite_nuevo_access_token(self, api_client, empresa_id, operador):
         uid, email = operador
-        tokens = _login(api_client, email).json()
-        r = api_client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+        r_login = _login(api_client, email)
+        refresh_cookie = r_login.cookies.get("refresh_token")
+        r = api_client.post("/auth/refresh", cookies={"refresh_token": refresh_cookie})
         data = r.json()
         assert "access_token" in data
         # El nuevo token debe ser un JWT de acceso válido
@@ -379,19 +401,21 @@ class TestRefresh:
         assert payload["tipo"] == "access"
 
     def test_refresh_token_invalido_401(self, api_client):
-        r = api_client.post("/auth/refresh", json={"refresh_token": "invalid.token.here"})
+        r = api_client.post("/auth/refresh", cookies={"refresh_token": "invalid.token.here"})
         assert r.status_code == 401
 
     def test_refresh_con_access_token_401(self, api_client, empresa_id, operador):
         """Un access_token no debe servir como refresh_token."""
         _, email = operador
         tokens = _login(api_client, email).json()
-        r = api_client.post("/auth/refresh", json={"refresh_token": tokens["access_token"]})
+        # Enviamos el access_token en la cookie de refresh — debe rechazarse
+        r = api_client.post("/auth/refresh", cookies={"refresh_token": tokens["access_token"]})
         assert r.status_code == 401
 
     def test_refresh_usuario_inactivo_401(self, api_client, empresa_id):
         uid, email = _nuevo_usuario(empresa_id)
-        tokens = _login(api_client, email).json()
+        r_login = _login(api_client, email)
+        refresh_cookie = r_login.cookies.get("refresh_token")
         # Desactivar usuario después del login
         from models.db_saas import get_session, Usuario
         s = get_session()
@@ -401,12 +425,13 @@ class TestRefresh:
             s.commit()
         finally:
             s.close()
-        r = api_client.post("/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
+        r = api_client.post("/auth/refresh", cookies={"refresh_token": refresh_cookie})
         assert r.status_code == 401
 
-    def test_refresh_sin_cuerpo_422(self, api_client):
+    def test_refresh_sin_token_401(self, api_client):
+        """Sin cookie ni body → 401 (no hay refresh token que validar)."""
         r = api_client.post("/auth/refresh")
-        assert r.status_code == 422
+        assert r.status_code == 401
 
 
 # ============================================================
@@ -466,12 +491,13 @@ class TestMe:
         assert r.status_code == 401
 
     def test_me_con_refresh_token_401(self, api_client, empresa_id, operador):
-        _, email = operador
-        tokens = _login(api_client, email).json()
-        # El refresh token no debe servir para autenticarse en /me
+        """Un refresh_token en el header Authorization no debe dar acceso a /me."""
+        from app.api.auth.jwt_utils import crear_refresh_token
+        # Crear un refresh_token directamente — no importa el uid para este caso
+        rt = crear_refresh_token("some-uid-test")
         r = api_client.get(
             "/auth/me",
-            headers={"Authorization": f"Bearer {tokens['refresh_token']}"},
+            headers={"Authorization": f"Bearer {rt}"},
         )
         assert r.status_code == 401
 

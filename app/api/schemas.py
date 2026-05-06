@@ -182,18 +182,30 @@ class LoginRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    """Respuesta de POST /auth/login y POST /auth/refresh."""
+    """
+    Respuesta de POST /auth/login y POST /auth/refresh.
+
+    El refresh_token ya NO se devuelve en el body — viaja como
+    httpOnly cookie (Set-Cookie) para prevenir robo via XSS.
+    """
 
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     expires_in: int = Field(description="Segundos hasta que expira el access_token.")
 
 
 class RefreshRequest(BaseModel):
-    """Cuerpo de POST /auth/refresh."""
+    """
+    Cuerpo de POST /auth/refresh — ahora opcional.
 
-    refresh_token: str = Field(..., description="Refresh token emitido en el login.")
+    El refresh_token llega como httpOnly cookie automáticamente.
+    Este campo se mantiene por compatibilidad con clientes legacy.
+    """
+
+    refresh_token: Optional[str] = Field(
+        default=None,
+        description="Deprecado: usar httpOnly cookie. Mantenido por compatibilidad.",
+    )
 
 
 class UsuarioActual(BaseModel):
@@ -203,6 +215,8 @@ class UsuarioActual(BaseModel):
     nombre: str
     email: str
     rol: str
+    sub_rol: Optional[str] = None    # Sprint 2
+    area_id: Optional[str] = None    # Sprint 2
     empresa_id: Optional[str] = None
     activo: bool
 
@@ -215,6 +229,8 @@ class UsuarioCrearRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=512)
     empresa_id: Optional[str] = Field(default=None, description="ID de la empresa a la que pertenece. Requerido salvo para admin global.")
     rol: str = Field(default="agente", description="admin | agente | usuario")
+    sub_rol: Optional[str] = Field(default=None, description="Sub-rol operativo (Sprint 2). Ej: director, gerente, vendedor.")  # Sprint 2
+    area_id: Optional[str] = Field(default=None, description="ID del área a la que pertenece (Sprint 2).")  # Sprint 2
 
     @field_validator("rol")
     @classmethod
@@ -222,6 +238,16 @@ class UsuarioCrearRequest(BaseModel):
         roles_validos = {"admin", "agente", "usuario"}
         if v not in roles_validos:
             raise ValueError(f"rol debe ser uno de: {roles_validos}")
+        return v
+
+    @field_validator("sub_rol")
+    @classmethod
+    def validar_sub_rol(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        from models.db_saas import SUB_ROLES_VALIDOS
+        if v not in SUB_ROLES_VALIDOS:
+            raise ValueError(f"sub_rol debe ser uno de: {sorted(SUB_ROLES_VALIDOS)}")
         return v
 
 
@@ -247,6 +273,9 @@ class UsuarioRespuesta(BaseModel):
     nombre: str
     email: str
     rol: str
+    sub_rol: Optional[str] = None    # Sprint 2
+    area_id: Optional[str] = None    # Sprint 2
+    area_nombre: Optional[str] = None  # Sprint 4 — nombre del área para la vista por área
     empresa_id: Optional[str] = None
     empresa_nombre: Optional[str] = None
     activo: bool
@@ -259,6 +288,8 @@ class UsuarioActualizar(BaseModel):
     email: Optional[str] = Field(default=None, max_length=255)
     password: Optional[str] = Field(default=None, min_length=8, max_length=512)
     rol: Optional[str] = Field(default=None)
+    sub_rol: Optional[str] = Field(default=None, description="Sub-rol operativo (Sprint 2).")  # Sprint 2
+    area_id: Optional[str] = Field(default=None, description="ID del área (Sprint 2).")      # Sprint 2
     empresa_id: Optional[str] = Field(default=None)
     activo: Optional[bool] = Field(default=None)
 
@@ -283,3 +314,33 @@ class ConfigSistema(BaseModel):
     max_reintentos: int = 3
     session_ttl_min: int = 60
     log_level: str = "INFO"
+
+
+# ── Sprint 2 — Áreas ─────────────────────────────────────────────────────────
+
+class AreaCrear(BaseModel):
+    """Cuerpo de POST /admin/areas — crea un área para una empresa."""
+    nombre: str = Field(..., min_length=1, max_length=255)
+    empresa_id: str = Field(..., description="ID de la empresa propietaria del área.")
+    codigo: Optional[str] = Field(default=None, max_length=100, description="Código único por empresa (e.g. TDA-042).")
+    tipo: str = Field(default="tienda", description="tienda | almacen | oficina | planta")
+    activa: bool = Field(default=True)
+
+    @field_validator("tipo")
+    @classmethod
+    def validar_tipo(cls, v: str) -> str:
+        tipos_validos = {"tienda", "almacen", "oficina", "planta"}
+        if v not in tipos_validos:
+            raise ValueError(f"tipo debe ser uno de: {tipos_validos}")
+        return v
+
+
+class AreaRespuesta(BaseModel):
+    """Respuesta de GET/POST /admin/areas."""
+    id: str
+    empresa_id: str
+    nombre: str
+    codigo: Optional[str] = None
+    tipo: str
+    activa: bool
+    creado_en: Optional[str] = None

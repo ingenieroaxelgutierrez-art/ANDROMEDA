@@ -4,7 +4,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { login, getMe, ApiError } from "@/lib/api";
-import { guardarTokens, guardarRol } from "@/lib/auth";
+import { guardarTokens, guardarRol, getSubRol, getRedirectPath } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,13 +19,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const tokens = await login(email.trim(), password);
-      guardarTokens(tokens.access_token, tokens.refresh_token);
-      // Obtener rol y redirigir al dashboard correspondiente
+      guardarTokens(tokens.access_token);
       const me = await getMe();
       guardarRol(me.rol);
-      if (me.rol === "admin") router.push("/admin");
-      else if (me.rol === "agente") router.push("/agente/chat");
-      else router.push("/chat");
+      // sub_rol viene en el JWT — ya fue guardado por guardarTokens()
+      const subRol = getSubRol();
+      router.push(getRedirectPath(me.rol, subRol));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error de conexión. Intenta de nuevo.");
     } finally {

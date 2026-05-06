@@ -24,7 +24,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Config
-from app.api.routers import auth, chat, reportes, salud, configuracion, admin, manuales, agente
+from app.api.routers import auth, chat, reportes, salud, configuracion, admin, manuales, agente, areas
 from app.api.middlewares.logging import log_requests_middleware
 
 
@@ -50,13 +50,15 @@ app = FastAPI(
 )
 
 # ── Middlewares ──────────────────────────────────────────────────────────────
-# CORS: permite que el frontend Next.js (localhost:3000) consuma la API.
+# CORS: orígenes permitidos desde ALLOWED_ORIGINS (separados por coma).
+# En desarrollo se usa el default localhost:3000.
+# En producción: ALLOWED_ORIGINS=https://mi-dominio.com,https://app.mi-dominio.com
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -74,4 +76,5 @@ app.include_router(configuracion.router)   # GET|POST|PUT|DELETE /configuracion
 app.include_router(admin.router)           # GET /admin/dashboard  /empresas  /usuarios  /metricas  /configuracion-sistema
 app.include_router(agente.router)          # GET|PUT /agente/empresa  GET /agente/metricas
 app.include_router(manuales.router)        # GET /manuales/imagenes/{filename}
+app.include_router(areas.router)           # GET|POST|PUT|DELETE /admin/areas  (Sprint 2)
 

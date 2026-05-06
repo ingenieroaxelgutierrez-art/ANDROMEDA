@@ -32,6 +32,7 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     Enum as SAEnum,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
 from dotenv import load_dotenv
@@ -73,7 +74,65 @@ def descifrar_credencial(cifrado: str) -> str:
     return f.decrypt(cifrado.encode("utf-8")).decode("utf-8")
 
 
+# ── Constantes de sub-roles ───────────────────────────────────────────────────
+
+# Sub-roles disponibles por tipo de rol principal.
+# admin    → sin restricción de área (siempre visibilidad global)
+# agente   → sub-roles operativos con acceso potencialmente filtrado por área
+# usuario  → solo puede ver manuales (sin acceso a datos)
+
+SUB_ROLES_VALIDOS = frozenset({
+    # admin — sin restricción de área (visión global)
+    "admin",
+    # agentes operativos con visión global
+    "director",
+    "gerente",
+    # agentes con filtrado por área/equipo
+    "jefe",
+    "coordinador",
+    # agentes con filtrado por tienda/almacén
+    "auxiliar",
+    "tienda",
+})
+
 # ── Modelos ORM ──────────────────────────────────────────────────────────────
+
+class Area(Base):
+    """
+    Área funcional dentro de una empresa (e.g. Tienda Cancún, RRHH Central).
+
+    Permite filtrar los datos Odoo que un agente puede consultar.
+    Un Usuario con area_id solo verá datos de su área cuando el ejecutor
+    lo soporte (Sprint 3). Sin area_id → visibilidad global.
+    """
+    __tablename__ = "areas"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    empresa_id = Column(String(36), ForeignKey("empresas.id"), nullable=False, index=True)
+    nombre = Column(String(255), nullable=False)
+    codigo = Column(String(100), nullable=True)        # e.g. "TDA-042", "WHouse-CDMX"
+    tipo = Column(String(50), nullable=False, default="tienda")  # tienda | almacen | oficina | planta
+    activa = Column(Boolean, nullable=False, default=True)
+    creado_en = Column(DateTime, nullable=True)
+
+    empresa = relationship("Empresa", back_populates="areas")
+    usuarios = relationship("Usuario", back_populates="area")
+
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "codigo", name="uq_area_codigo_por_empresa"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "empresa_id": self.empresa_id,
+            "nombre": self.nombre,
+            "codigo": self.codigo,
+            "tipo": self.tipo,
+            "activa": self.activa,
+            "creado_en": self.creado_en.isoformat() if self.creado_en else None,
+        }
+
 
 class Empresa(Base):
     """
@@ -99,6 +158,7 @@ class Empresa(Base):
 
     usuarios = relationship("Usuario", back_populates="empresa", cascade="all, delete-orphan")
     sesiones_log = relationship("SesionLog", back_populates="empresa", cascade="all, delete-orphan")
+    areas = relationship("Area", back_populates="empresa", cascade="all, delete-orphan")
 
     def set_password(self, password: str) -> None:
         """Cifra y persiste la contraseña del ERP."""
@@ -130,7 +190,9 @@ class Usuario(Base):
     """
     Usuario del sistema ANDROMEDA.
     Pertenece a exactamente una Empresa.
-    Roles: admin → operador → viewer (en orden de privilegio descendente).
+    Roles: admin → agente → usuario (en orden de privilegio descendente).
+    Sub-roles (Sprint 2): refinan el perfil dentro de cada rol principal.
+    area_id (Sprint 2): filtra datos a un área específica (Sprint 3 aplica el filtro).
     """
     __tablename__ = "usuarios"
 
@@ -143,11 +205,16 @@ class Usuario(Base):
         nullable=False,
         default="agente",
     )
+    # Sprint 2 — sub-rol y área
+    sub_rol = Column(String(50), nullable=True)         # e.g. "director", "gerente", "vendedor"
+    area_id = Column(String(36), ForeignKey("areas.id"), nullable=True, index=True)
+
     activo = Column(Boolean, nullable=False, default=True)
-    password_hash = Column(String(255), nullable=True)  # bcrypt hash; nullable para migraciones
+    password_hash = Column(String(255), nullable=True)  # pbkdf2_sha256; nullable para migraciones
     creado_en = Column(DateTime, nullable=True)
 
     empresa = relationship("Empresa", back_populates="usuarios")
+    area = relationship("Area", back_populates="usuarios")
     sesiones_log = relationship("SesionLog", back_populates="usuario", cascade="all, delete-orphan")
 
     def set_password(self, password_plain: str) -> None:
@@ -175,6 +242,8 @@ class Usuario(Base):
             "email": self.email,
             "empresa_id": self.empresa_id,
             "rol": self.rol,
+            "sub_rol": self.sub_rol,
+            "area_id": self.area_id,
             "activo": self.activo,
             "creado_en": self.creado_en.isoformat() if self.creado_en else None,
         }
@@ -290,6 +359,24 @@ def inicializar_db() -> None:
                     with _eng_tmp.connect() as _conn:
                         _conn.execute(_text("PRAGMA journal_mode=WAL"))
                         _conn.execute(_text("PRAGMA synchronous=NORMAL"))
+                        # ── Migraciones incrementales (Sprint 2) ──────────────
+                        # ALTER TABLE no falla si la columna ya existe: primero
+                        # inspeccionamos las columnas presentes y solo añadimos
+                        # las que falten.  SQLite no soporta IF NOT EXISTS en
+                        # ALTER TABLE, así que lo hacemos manualmente.
+                        _cols_result = _conn.execute(_text("PRAGMA table_info(usuarios)"))
+                        _col_names = {row[1] for row in _cols_result.fetchall()}
+                        if "sub_rol" not in _col_names:
+                            _conn.execute(_text(
+                                "ALTER TABLE usuarios ADD COLUMN sub_rol VARCHAR(50)"
+                            ))
+                            logger.info("Migración aplicada: usuarios.sub_rol añadida")
+                        if "area_id" not in _col_names:
+                            _conn.execute(_text(
+                                "ALTER TABLE usuarios ADD COLUMN area_id VARCHAR(36)"
+                            ))
+                            logger.info("Migración aplicada: usuarios.area_id añadida")
+                        _conn.commit()
                 # Promocionar a globales solo tras éxito completo
                 _engine = _eng_tmp
                 _SessionFactory = _sf_tmp

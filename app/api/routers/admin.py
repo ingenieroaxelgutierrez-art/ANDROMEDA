@@ -232,16 +232,23 @@ def eliminar_empresa_admin(empresa_id: str, payload: Annotated[dict, Depends(_so
 # ── CRUD Usuarios ──────────────────────────────────────────────────────────────
 
 def _usuario_a_respuesta(u, session) -> UsuarioRespuesta:
-    from models.db_saas import Empresa
+    from models.db_saas import Empresa, Area
     empresa_nombre = None
     if u.empresa_id:
         emp = session.query(Empresa).filter(Empresa.id == u.empresa_id).first()
         empresa_nombre = emp.nombre if emp else None
+    area_nombre = None
+    if getattr(u, "area_id", None):
+        area = session.query(Area).filter(Area.id == u.area_id).first()
+        area_nombre = area.nombre if area else u.area_id  # fallback: area_id como nombre
     return UsuarioRespuesta(
         id=u.id,
         nombre=u.nombre,
         email=u.email,
         rol=u.rol,
+        sub_rol=getattr(u, "sub_rol", None),
+        area_id=getattr(u, "area_id", None),
+        area_nombre=area_nombre,
         empresa_id=u.empresa_id,
         empresa_nombre=empresa_nombre,
         activo=u.activo,
@@ -277,6 +284,8 @@ def crear_usuario_admin(datos: UsuarioCrearRequest, payload: Annotated[dict, Dep
             email=datos.email,
             empresa_id=datos.empresa_id,
             rol=datos.rol,
+            sub_rol=datos.sub_rol,
+            area_id=datos.area_id,
             activo=True,
             creado_en=datetime.now(timezone.utc),
         )
@@ -317,6 +326,10 @@ def actualizar_usuario_admin(
             usuario.set_password(datos.password)
         if datos.rol is not None:
             usuario.rol = datos.rol
+        if datos.sub_rol is not None:
+            usuario.sub_rol = datos.sub_rol
+        if datos.area_id is not None:
+            usuario.area_id = datos.area_id
         if datos.empresa_id is not None:
             usuario.empresa_id = datos.empresa_id
         if datos.activo is not None:

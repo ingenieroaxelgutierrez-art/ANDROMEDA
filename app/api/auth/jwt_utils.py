@@ -36,6 +36,8 @@ def crear_access_token(
     email: str,
     rol: str,
     empresa_id: str,
+    sub_rol: Optional[str] = None,
+    area_id: Optional[str] = None,
 ) -> str:
     """
     Genera un JWT de acceso de corta duración (15 min por defecto).
@@ -43,8 +45,10 @@ def crear_access_token(
     Claims incluidos:
         sub         — usuario_id (sujeto estándar JWT)
         email       — email del usuario
-        rol         — admin | operador | viewer
+        rol         — admin | agente | usuario
         empresa_id  — empresa a la que pertenece el usuario
+        sub_rol     — perfil operativo dentro del rol (Sprint 2, opcional)
+        area_id     — área a la que pertenece (Sprint 2, opcional)
         tipo        — "access"
         exp         — tiempo de expiración (UNIX timestamp)
     """
@@ -57,6 +61,11 @@ def crear_access_token(
         "tipo": _TOKEN_TYPE_ACCESS,
         "exp": expire,
     }
+    # Incluir claims opcionales solo cuando tienen valor (evita contaminación del JWT)
+    if sub_rol is not None:
+        payload["sub_rol"] = sub_rol
+    if area_id is not None:
+        payload["area_id"] = area_id
     return jwt.encode(payload, _SECRET_KEY, algorithm=_ALGORITHM)
 
 

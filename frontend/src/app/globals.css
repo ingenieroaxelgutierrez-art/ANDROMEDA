@@ -168,3 +168,22 @@ body::after {
 }
 .typing-dot:nth-child(2) { animation-delay: 0.15s; }
 .typing-dot:nth-child(3) { animation-delay: 0.30s; }
+
+/* ── Chat container: altura responsive ── */
+/* mobile: 100dvh - topbar (56px) - layout pt (16px) - layout pb (16px) - form area (~70px) */
+.chat-container {
+  height: calc(100dvh - 158px);
+}
+@media (min-width: 768px) {
+  /* desktop: 100vh - layout py-8 top (32px) - layout py-8 bottom (32px) */
+  .chat-container {
+    height: calc(100vh - 64px);
+  }
+}
+
+/* ── Tablas responsivas dentro del chat ── */
+.chat-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}

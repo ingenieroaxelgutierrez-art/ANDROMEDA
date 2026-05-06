@@ -45,14 +45,18 @@ def mock_bot():
 @pytest.fixture(scope="module")
 def client(mock_bot):
     """
-    TestClient con el bot sobreescrito por el mock.
+    TestClient con bot y autenticación sobreescritos por mocks.
+    Sprint 1: /chat requiere JWT — se inyecta un payload de agente de prueba.
     Se limpia dependency_overrides al finalizar el módulo.
     """
     from fastapi.testclient import TestClient
     from app.api.main_api import app
-    from app.api.dependencies import get_bot
+    from app.api.dependencies import get_bot, get_usuario_autenticado
+
+    _payload_test = {"sub": "test-uid", "rol": "agente", "empresa_id": "test-empresa-001"}
 
     app.dependency_overrides[get_bot] = lambda: mock_bot
+    app.dependency_overrides[get_usuario_autenticado] = lambda: _payload_test
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

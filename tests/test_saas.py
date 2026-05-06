@@ -578,18 +578,31 @@ class TestLoggingSaas:
 
 @pytest.fixture()
 def api_client():
-    """TestClient de FastAPI con bot mockeado y admin auth bypass."""
+    """
+    TestClient de FastAPI con bot mockeado y dependencias de auth sobreescritas.
+
+    Sprint 1: los endpoints de /configuracion requieren get_solo_admin (dependencies.py)
+    y los de /admin/* requieren _solo_admin (admin.py — función local pendiente de refactor).
+    Los de /chat requieren get_usuario_autenticado.
+    """
     from fastapi.testclient import TestClient
     from app.api.main_api import app
-    from app.api.dependencies import get_bot
-    from app.api.routers.admin import _solo_admin
+    from app.api.dependencies import get_bot, get_solo_admin, get_usuario_autenticado
+    from app.api.routers.admin import _solo_admin as _admin_local
 
     mock_bot = MagicMock()
     mock_bot.procesar_mensaje.return_value = (
         [{"role": "assistant", "content": "OK"}], "", "✓ ventas"
     )
+
+    _admin_payload = {"sub": "admin-test", "rol": "admin", "empresa_id": None}
+    _user_payload  = {"sub": "user-test",  "rol": "agente", "empresa_id": None}
+
     app.dependency_overrides[get_bot] = lambda: mock_bot
-    app.dependency_overrides[_solo_admin] = lambda: {"sub": "admin-test", "rol": "admin", "empresa_id": None}
+    app.dependency_overrides[get_solo_admin] = lambda: _admin_payload
+    app.dependency_overrides[_admin_local] = lambda: _admin_payload
+    app.dependency_overrides[get_usuario_autenticado] = lambda: _user_payload
+
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.clear()

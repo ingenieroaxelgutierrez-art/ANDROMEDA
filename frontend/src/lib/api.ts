@@ -10,7 +10,6 @@
 
 import {
   getAccessToken,
-  getRefreshToken,
   guardarTokens,
   clearTokens,
 } from "./auth";
@@ -21,7 +20,6 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 export interface TokenResponse {
   access_token: string;
-  refresh_token: string;
   token_type: string;
   expires_in: number;
 }
@@ -96,10 +94,23 @@ export interface UsuarioSaaS {
   nombre: string;
   email: string;
   rol: "admin" | "agente" | "usuario";
+  sub_rol?: string | null;       // Sprint 2
+  area_id?: string | null;       // Sprint 2
+  area_nombre?: string | null;   // Sprint 4 — nombre del área para agrupación visual
   empresa_id: string | null;
   empresa_nombre?: string;
   activo: boolean;
-  fecha_alta: string;
+  fecha_alta?: string;
+  creado_en?: string | null;
+}
+
+export interface AreaSaaS {
+  id: string;
+  empresa_id: string;
+  nombre: string;
+  codigo?: string | null;
+  tipo: string;
+  activa: boolean;
 }
 
 export interface UsuarioCreate {
@@ -108,6 +119,8 @@ export interface UsuarioCreate {
   password: string;
   rol: "admin" | "agente" | "usuario";
   empresa_id?: string | null;
+  area_id?: string | null;
+  sub_rol?: string | null;
 }
 
 export interface DashboardAdmin {
@@ -184,15 +197,14 @@ async function _parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, msg, detail);
 }
 
-/** Renueva el access_token usando el refresh_token almacenado. */
+/** Renueva el access_token usando la cookie httpOnly refresh_token. */
 async function _renovarToken(): Promise<boolean> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-
+  // credentials:'include' envía la cookie httpOnly refresh_token automáticamente.
+  // El backend la lee, valida, rota y responde con el nuevo access_token.
   const res = await fetch(`${BASE_URL}/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    credentials: "include",   // ← envía cookies cross-origin
   });
 
   if (!res.ok) {
@@ -201,7 +213,7 @@ async function _renovarToken(): Promise<boolean> {
   }
 
   const data: TokenResponse = await res.json();
-  guardarTokens(data.access_token, data.refresh_token);
+  guardarTokens(data.access_token);
   return true;
 }
 
@@ -220,7 +232,7 @@ async function _fetch(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers, credentials: "include" });
 
   if (res.status === 401 && !retried) {
     const renovado = await _renovarToken();
@@ -247,6 +259,7 @@ export async function login(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
+    credentials: "include",   // ← recibe la cookie httpOnly refresh_token
   });
   if (!res.ok) throw await _parseError(res);
   return res.json();
@@ -389,6 +402,16 @@ export async function eliminarUsuario(id: string): Promise<void> {
     method: "DELETE",
   });
   if (!res.ok) throw await _parseError(res);
+}
+
+// ── Admin — Áreas ─────────────────────────────────────────────────────────────
+
+/** GET /admin/areas */
+export async function getAreas(empresaId?: string): Promise<AreaSaaS[]> {
+  const query = empresaId ? `?empresa_id=${encodeURIComponent(empresaId)}` : "";
+  const res = await _fetch(`/admin/areas${query}`);
+  if (!res.ok) throw await _parseError(res);
+  return res.json();
 }
 
 /** GET /admin/configuracion-sistema */

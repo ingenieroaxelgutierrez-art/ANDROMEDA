@@ -328,11 +328,46 @@ SQLAlchemy 2.x con SQLite por defecto (configurable a PostgreSQL via `DB_URL`):
 | Modelo | Campos clave |
 |---|---|
 | `Empresa` | id UUID, nombre, odoo_url, odoo_db, `odoo_clave_cifrada` (Fernet), version_odoo, tipo_erp, activa |
-| `Usuario` | id, nombre, email, empresa_id FK, rol (**admin/agente/usuario**), activo, password_hash |
+| `Usuario` | id, nombre, email, empresa_id FK, rol (**admin/agente/usuario**), sub_rol, area_id FK, activo, password_hash |
+| `Area` | id UUID, empresa_id FK, nombre, codigo, tipo (tienda/almacen/oficina/planta), activa |
 | `SesionLog` | empresa_id, session_id, timestamp, accion, tipo_consulta, resultado, duracion_ms |
 | `SesionContexto` | session_id PK, empresa_id, historial_json, ultima_actividad |
 
 Cifrado Fernet: clave derivada de `SECRET_KEY` via SHA-256 → base64url. Credenciales de empresa nunca expuestas en respuestas API (`to_dict(include_credentials=False)`).
+
+### Sistema de roles y permisos
+
+ANDROMEDA implementa un modelo de roles de 3 niveles con sub-roles que controlan tanto el acceso a endpoints como el filtrado de datos en Odoo.
+
+#### Roles principales (JWT claim `rol`)
+
+| Rol | Acceso a endpoints | Filtrado Odoo |
+|---|---|---|
+| `admin` | Total — `/admin/*`, `/agente/*`, `/chat`, `/reportes` | Sin filtro (visión global) |
+| `agente` | `/agente/*`, `/chat`, `/reportes`, `/auth/me`, `/auth/perfil` | Según su sub_rol y área |
+| `usuario` | `/chat`, `/auth/me`, `/auth/perfil` | Sin filtro directo |
+
+#### Sub-roles (JWT claim `sub_rol`)
+
+Refinan el perfil del usuario dentro de su rol principal y determinan qué datos ve en Odoo:
+
+| Sub-rol | Tipo de filtro Odoo | Descripción |
+|---|---|---|
+| `admin` | **Sin filtro** — visión global | Administrador de la empresa |
+| `director` | **Sin filtro** — visión global | Dirección general |
+| `gerente` | **Sin filtro** — visión global | Gerencia de área |
+| `jefe` | Filtrado por **equipo/área** (`team_id.name ilike area_codigo`) | Jefatura operativa |
+| `coordinador` | Filtrado por **equipo/área** | Coordinación de procesos |
+| `auxiliar` | Filtrado por **tienda/almacén** (`warehouse_id.code = area_codigo`) | Operaciones en punto de venta |
+| `tienda` | Filtrado por **tienda/almacén** | Personal de tienda |
+
+#### Áreas canónicas
+
+Las áreas representan unidades funcionales dentro de una empresa. Cada área tiene un `codigo` que se usa como valor de filtro en las consultas Odoo:
+
+`Finanzas` · `Tiendas` · `Marketing` · `Sistemas` · `Almacén` · `Operaciones` · `Franquicias` · `Auditoria` · `Talento` · `Proyectos` · `Compras` · `Ventas`
+
+El endpoint `POST /chat` resuelve el `area_id` del JWT (UUID o nombre canónico) contra la tabla `areas` para obtener el `codigo` real que se inyecta como filtro de dominio Odoo.
 
 ### Ejecución
 

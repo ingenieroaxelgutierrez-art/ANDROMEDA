@@ -81,7 +81,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col max-w-3xl mx-auto" style={{ height: "calc(100vh - 64px)" }}>
+    <div className="flex flex-col max-w-3xl mx-auto chat-container">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <div

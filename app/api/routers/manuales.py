@@ -5,9 +5,12 @@
 
 import os
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+
+from app.api.dependencies import get_usuario_autenticado
 
 router = APIRouter(prefix="/manuales", tags=["manuales"])
 
@@ -24,7 +27,10 @@ _MIME = {
 
 
 @router.get("/imagenes/{filename}", summary="Obtener imagen del manual")
-def get_imagen(filename: str) -> FileResponse:
+def get_imagen(
+    filename: str,
+    _: Annotated[dict, Depends(get_usuario_autenticado)],
+) -> FileResponse:
     """Sirve una imagen del manual almacenada en data/manuales/imagenes/."""
     # Sanitizar: no permitir traversal de directorios
     safe_name = Path(filename).name

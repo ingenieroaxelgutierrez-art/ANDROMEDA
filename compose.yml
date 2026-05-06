@@ -8,6 +8,10 @@
 # - NO reconstruir imagen para cambios de código
 # - SÍ reconstruir si cambia requirements.txt o package.json:
 #     docker compose up --build
+#
+# Ejecutar tests:
+#   docker compose run --rm test-backend    ← pytest (Python)
+#   docker compose run --rm test-frontend   ← jest   (TypeScript)
 # ============================================================
 
 services:
@@ -28,15 +32,23 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./models:/app/models
-      # node_modules NO se monta (no existe en backend, es solo por claridad)
     env_file:
       - .env
     environment:
       - PYTHONPATH=/app
-      # URL pública que el browser del usuario usa para acceder al backend
       - API_BASE_URL=http://localhost:8000
-      # Ollama corre en el host de Windows — desde Docker se accede via host.docker.internal
       - OLLAMA_HOST=http://host.docker.internal:11434
+    healthcheck:
+      # El endpoint /health retorna 200 cuando FastAPI está listo y la BD inicializada.
+      # interval: tiempo entre checks | timeout: tiempo máximo por check
+      # retries: nº de fallos consecutivos antes de marcar unhealthy
+      # start_period: tiempo inicial de gracia (la app puede tardar en arrancar)
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - andromeda-net
 
@@ -56,14 +68,56 @@ services:
       - /app/node_modules
       - /app/.next
     environment:
-      # El navegador del usuario accede al backend por localhost (puerto expuesto).
-      # "backend" solo es resolvible dentro de la red Docker, no desde el browser.
+      # El navegador accede al backend por localhost (puerto expuesto).
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      # Server-side (API routes Next.js): usa el nombre de servicio Docker.
+      - BACKEND_INTERNAL_URL=http://backend:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    networks:
+      - andromeda-net
+
+  # ── Tests Backend (pytest) ────────────────────────────────
+  # Uso: docker compose run --rm test-backend
+  # Flags adicionales: docker compose run --rm test-backend tests/test_sprint3.py -v
+  test-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: andromeda-test-backend
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    entrypoint: ["python", "-m", "pytest"]
+    command: ["--tb=short", "-q"]
+    profiles:
+      - test
+    networks:
+      - andromeda-net
+
+  # ── Tests Frontend (jest) ─────────────────────────────────
+  # Uso: docker compose run --rm test-frontend
+  test-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: andromeda-test-frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    entrypoint: ["npm", "run", "test"]
+    profiles:
+      - test
     networks:
       - andromeda-net
 
 networks:
   andromeda-net:
     driver: bridge
+

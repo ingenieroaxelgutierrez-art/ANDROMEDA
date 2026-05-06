@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { logout } from "@/lib/api";
-import { getRol } from "@/lib/auth";
+import { getRol, getSubRol } from "@/lib/auth";
 
 interface NavLink {
   href: string;
@@ -70,14 +70,48 @@ const LINKS_ADMIN: NavLink[] = [
   { href: "/admin/configuracion", label: "Configuración", icon: IcoConfig    },
 ];
 const LINKS_AGENTE: NavLink[] = [
-  { href: "/agente/chat",             label: "Chat",         icon: IcoChat     },
-  { href: "/agente/metricas",         label: "Métricas",     icon: IcoMetricas },
-  { href: "/agente/configuracion",    label: "Mi empresa",   icon: IcoConfig   },
+  { href: "/agente/chat",          label: "Chat",       icon: IcoChat     },
+  { href: "/agente/metricas",      label: "Métricas",   icon: IcoMetricas },
+  { href: "/agente/configuracion", label: "Mi empresa", icon: IcoConfig   },
 ];
 const LINKS_USUARIO: NavLink[] = [
-  { href: "/chat",           label: "Chat",      icon: IcoChat    },
-  { href: "/configuracion",  label: "Mi perfil", icon: IcoPerfil  },
+  { href: "/chat",          label: "Chat",      icon: IcoChat   },
+  { href: "/configuracion", label: "Mi perfil", icon: IcoPerfil },
 ];
+
+// Links por sub_rol — cada sub_rol tiene su ruta base y menú propio
+const LINKS_SUB_ROL: Record<string, NavLink[]> = {
+  director:    [
+    { href: "/director/chat",    label: "Chat",     icon: IcoChat     },
+    { href: "/admin/metricas",   label: "Métricas", icon: IcoMetricas },
+  ],
+  gerente:     [
+    { href: "/gerente/chat",     label: "Chat",     icon: IcoChat     },
+    { href: "/admin/metricas",   label: "Métricas", icon: IcoMetricas },
+  ],
+  jefe:        [
+    { href: "/jefe/chat",        label: "Chat",     icon: IcoChat     },
+  ],
+  coordinador: [
+    { href: "/coordinador/chat", label: "Chat",     icon: IcoChat     },
+  ],
+  auxiliar:    [
+    { href: "/auxiliar/chat",    label: "Chat",     icon: IcoChat     },
+  ],
+  tienda:      [
+    { href: "/tienda/chat",      label: "Chat",     icon: IcoChat     },
+  ],
+};
+
+const SUB_ROL_LABEL: Record<string, string> = {
+  admin:       "Admin",
+  director:    "Director",
+  gerente:     "Gerente",
+  jefe:        "Jefe",
+  coordinador: "Coordinador",
+  auxiliar:    "Auxiliar",
+  tienda:      "Tienda",
+};
 
 const ROL_LABEL: Record<string, string> = {
   admin:   "Administrador",
@@ -95,102 +129,181 @@ const ROL_COLOR: Record<string, string> = {
 export default function NavBar() {
   const router   = useRouter();
   const pathname = usePathname();
-  const [links, setLinks] = useState<NavLink[]>(LINKS_USUARIO);
-  const [rol, setRol]     = useState<string>("usuario");
+  const [links, setLinks]           = useState<NavLink[]>(LINKS_USUARIO);
+  const [rol, setRol]               = useState<string>("usuario");
+  const [displayLabel, setDisplayLabel] = useState<string>("Usuario");
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const r = getRol() ?? "usuario";
+    const r      = getRol()    ?? "usuario";
+    const subRol = getSubRol() ?? "";
     setRol(r);
-    if (r === "admin")       setLinks(LINKS_ADMIN);
-    else if (r === "agente") setLinks(LINKS_AGENTE);
-    else                     setLinks(LINKS_USUARIO);
+
+    // Etiqueta visual: sub_rol tiene prioridad sobre rol principal
+    setDisplayLabel(
+      SUB_ROL_LABEL[subRol] ?? ROL_LABEL[r] ?? r
+    );
+
+    // Links: sub_rol tiene prioridad sobre rol principal
+    if (subRol && LINKS_SUB_ROL[subRol]) {
+      setLinks(LINKS_SUB_ROL[subRol]);
+    } else if (r === "admin") {
+      setLinks(LINKS_ADMIN);
+    } else if (r === "agente") {
+      setLinks(LINKS_AGENTE);
+    } else {
+      setLinks(LINKS_USUARIO);
+    }
   }, []);
+
+  // Cerrar drawer al cambiar de ruta
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   async function handleLogout() {
     try { await logout(); } finally { router.push("/login"); }
   }
 
   return (
-    <aside
-      className="glass-strong fixed left-0 top-0 h-full flex flex-col z-50"
-      style={{ width: "var(--sidebar-width, 260px)" }}
-    >
-      {/* Header — logo */}
-      <div className="px-6 py-7 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0"
-            style={{ background: "linear-gradient(135deg,#667eea,#764ba2,#f64f59)" }}
-          >
-            <Image src="/logo.png" alt="ANDROMEDA" width={40} height={40} className="w-full h-full object-cover" />
-          </div>
-          <div>
-            <h1 className="text-gradient font-black text-lg leading-none tracking-tight">ANDROMEDA</h1>
-            <span
-              className="text-xs mt-1 px-2 py-0.5 rounded-full inline-block font-medium"
-              style={{
-                background: "rgba(255,255,255,0.06)",
-                color:  ROL_COLOR[rol] ?? "rgba(255,255,255,0.4)",
-                border: `1px solid ${ROL_COLOR[rol] ?? "rgba(255,255,255,0.1)"}`,
-              }}
+    <>
+      {/* ── Barra superior mobile (hamburger + logo) ── */}
+      <div
+        className="md:hidden fixed top-0 left-0 right-0 h-14 z-[60] flex items-center gap-3 px-4"
+        style={{
+          background: "rgba(15,15,40,0.92)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          borderBottom: "1px solid rgba(102,126,234,0.2)",
+        }}
+      >
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
+          style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.85)" }}
+          aria-label="Abrir menú"
+        >
+          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+            <line x1="3" y1="6"  x2="21" y2="6"  strokeLinecap="round" />
+            <line x1="3" y1="12" x2="21" y2="12" strokeLinecap="round" />
+            <line x1="3" y1="18" x2="21" y2="18" strokeLinecap="round" />
+          </svg>
+        </button>
+        <div
+          className="w-7 h-7 rounded-lg overflow-hidden flex-shrink-0"
+          style={{ background: "linear-gradient(135deg,#667eea,#764ba2,#f64f59)" }}
+        >
+          <Image src="/logo.png" alt="ANDROMEDA" width={28} height={28} className="w-full h-full object-cover" />
+        </div>
+        <span className="text-gradient font-black text-base tracking-tight">ANDROMEDA</span>
+      </div>
+
+      {/* ── Backdrop overlay (mobile) ── */}
+      <div
+        className={`md:hidden fixed inset-0 z-[65] bg-black/70 transition-opacity duration-300
+          ${mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        style={{ backdropFilter: mobileOpen ? "blur(4px)" : "none" }}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* ── Sidebar ── */}
+      <aside
+        className={`glass-strong fixed left-0 top-0 h-full flex flex-col z-[70]
+          transition-transform duration-300 ease-in-out
+          ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
+        style={{ width: "260px" }}
+      >
+        {/* Header — logo */}
+        <div className="px-6 py-7 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl overflow-hidden flex-shrink-0"
+              style={{ background: "linear-gradient(135deg,#667eea,#764ba2,#f64f59)" }}
             >
-              {ROL_LABEL[rol] ?? rol}
-            </span>
+              <Image src="/logo.png" alt="ANDROMEDA" width={40} height={40} className="w-full h-full object-cover" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-gradient font-black text-lg leading-none tracking-tight">ANDROMEDA</h1>
+              <span
+                className="text-xs mt-1 px-2 py-0.5 rounded-full inline-block font-medium"
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  color:  ROL_COLOR[rol] ?? "rgba(255,255,255,0.4)",
+                  border: `1px solid ${ROL_COLOR[rol] ?? "rgba(255,255,255,0.1)"}`,
+                }}
+              >
+                {displayLabel}
+              </span>
+            </div>
+            {/* Botón cerrar solo en mobile */}
+            <button
+              className="md:hidden w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0"
+              style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.6)" }}
+              onClick={() => setMobileOpen(false)}
+              aria-label="Cerrar menú"
+            >
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <line x1="18" y1="6"  x2="6"  y2="18" strokeLinecap="round" />
+                <line x1="6"  y1="6"  x2="18" y2="18" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Nav links */}
-      <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
-        <p className="px-3 pb-2 text-xs font-semibold tracking-widest uppercase"
-           style={{ color: "rgba(255,255,255,0.3)" }}>Menú</p>
+        {/* Nav links */}
+        <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
+          <p className="px-3 pb-2 text-xs font-semibold tracking-widest uppercase"
+             style={{ color: "rgba(255,255,255,0.3)" }}>Menú</p>
 
-        {links.map(({ href, label, icon }) => {
-          const active = pathname === href || (href.length > 1 && pathname.startsWith(href));
-          return (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200"
-              style={{
-                background: active ? "rgba(102,126,234,0.25)" : "transparent",
-                color:      active ? "#fff" : "rgba(255,255,255,0.65)",
-                border:     active ? "1px solid rgba(102,126,234,0.35)" : "1px solid transparent",
-              }}
-            >
-              <span style={{ color: active ? "#8b9fee" : "rgba(255,255,255,0.45)" }}>{icon}</span>
-              {label}
-              {active && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: "#667eea" }} />
-              )}
-            </Link>
-          );
-        })}
-      </nav>
+          {links.map(({ href, label, icon }) => {
+            const active = pathname === href || (href.length > 1 && pathname.startsWith(href));
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200"
+                style={{
+                  background: active ? "rgba(102,126,234,0.25)" : "transparent",
+                  color:      active ? "#fff" : "rgba(255,255,255,0.65)",
+                  border:     active ? "1px solid rgba(102,126,234,0.35)" : "1px solid transparent",
+                }}
+              >
+                <span style={{ color: active ? "#8b9fee" : "rgba(255,255,255,0.45)" }}>{icon}</span>
+                {label}
+                {active && (
+                  <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: "#667eea" }} />
+                )}
+              </Link>
+            );
+          })}
+        </nav>
 
-      {/* Footer — logout */}
-      <div className="px-3 pb-6 border-t pt-4" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200"
-          style={{ color: "rgba(255,255,255,0.5)" }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "rgba(246,79,89,0.12)";
-            (e.currentTarget as HTMLButtonElement).style.color = "#ff8a94";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-            (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.5)";
-          }}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round"
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Cerrar sesión
-        </button>
-      </div>
-    </aside>
+        {/* Footer — logout */}
+        <div className="px-3 pb-6 border-t pt-4" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200"
+            style={{ color: "rgba(255,255,255,0.5)" }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "rgba(246,79,89,0.12)";
+              (e.currentTarget as HTMLButtonElement).style.color = "#ff8a94";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+              (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.5)";
+            }}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round"
+                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            Cerrar sesión
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
 

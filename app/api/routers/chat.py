@@ -4,6 +4,7 @@
 # ============================================================
 
 import asyncio
+import contextvars
 import time
 import uuid
 from datetime import datetime
@@ -12,13 +13,17 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.schemas import MensajeRequest, RespuestaAPI
-from app.api.dependencies import get_bot
+from app.api.dependencies import get_bot, get_usuario_autenticado
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("", response_model=RespuestaAPI, summary="Procesar mensaje")
-async def procesar_chat(request: MensajeRequest, bot=Depends(get_bot)) -> RespuestaAPI:
+async def procesar_chat(
+    request: MensajeRequest,
+    bot=Depends(get_bot),
+    ctx: dict = Depends(get_usuario_autenticado),
+) -> RespuestaAPI:
     """
     Recibe un mensaje del usuario y retorna la respuesta del bot.
 
@@ -39,8 +44,34 @@ async def procesar_chat(request: MensajeRequest, bot=Depends(get_bot)) -> Respue
     """
     session_id: str = request.session_id or str(uuid.uuid4())
     historial: List[Dict[str, Any]] = list(request.historial or [])
-    empresa_id: str | None = request.empresa_id
+    # empresa_id se extrae del JWT (no del body) para garantizar que el usuario
+    # solo puede consultar datos de su propia empresa — no puede suplantarla.
+    empresa_id: str | None = ctx.get("empresa_id") or request.empresa_id
     t_inicio = time.perf_counter()
+
+    # ── Sprint 3: Resolver área del usuario para filtrado en ConectorOdoo ─────
+    # Si el usuario tiene area_id y sub_rol, buscamos el código del área en BD
+    # para poder filtrar en Odoo (el JWT guarda el UUID, Odoo necesita el código).
+    from models.conector_odoo import _ctx_usuario_filtro
+    _area_codigo: str | None = None
+    _area_tipo: str | None = None
+    _area_id: str | None = ctx.get("area_id")
+    _sub_rol: str | None = ctx.get("sub_rol")
+    if _area_id and _sub_rol:
+        _area_codigo, _area_tipo = _resolver_area_desde_bd(_area_id)
+
+    _contexto_filtro = {
+        "rol": ctx.get("rol", ""),
+        "sub_rol": _sub_rol or "",
+        "area_id": _area_id or "",
+        "area_codigo": _area_codigo or "",
+        "area_tipo": _area_tipo or "",
+    }
+    # Copiar contexto actual para propagar el ContextVar al thread executor
+    # IMPORTANTE: set() debe llamarse ANTES de copy_context() para que el
+    # snapshot incluya el nuevo valor del ContextVar.
+    _token_filtro = _ctx_usuario_filtro.set(_contexto_filtro)
+    _ctx_copy = contextvars.copy_context()
 
     # ── Restaurar contexto de sesión desde BD si el cliente no lo envió ──────
     if not historial and session_id:
@@ -52,6 +83,7 @@ async def procesar_chat(request: MensajeRequest, bot=Depends(get_bot)) -> Respue
     try:
         historial_actualizado, tabla_html, status = await asyncio.get_event_loop().run_in_executor(
             None,
+            _ctx_copy.run,
             lambda: bot.procesar_mensaje(mensaje=request.mensaje, historial=historial),
         )
     except Exception as exc:
@@ -63,6 +95,8 @@ async def procesar_chat(request: MensajeRequest, bot=Depends(get_bot)) -> Respue
             status_code=500,
             detail=f"Error procesando mensaje: {exc}",
         ) from exc
+    finally:
+        _ctx_usuario_filtro.reset(_token_filtro)
 
     duracion_ms = int((time.perf_counter() - t_inicio) * 1000)
 
@@ -206,4 +240,30 @@ def _inferir_tipo_consulta(status: str) -> str | None:
         if dominio in status_lower:
             return dominio
     return "otro"
+
+
+def _resolver_area_desde_bd(area_id: str) -> tuple[str | None, str | None]:
+    """
+    Devuelve (codigo, tipo) del área dado su UUID o nombre.
+    Busca primero por id (UUID); si no hay coincidencia, busca por nombre exacto
+    (soporta el caso en que el frontend guardó el nombre como area_id).
+    Tolerante a fallos: retorna (None, None) si la BD no está disponible
+    o el área no existe — en ese caso no se aplica filtro (comportamiento seguro).
+    """
+    try:
+        from models.db_saas import get_session, inicializar_db, Area
+        inicializar_db()
+        db = get_session()
+        try:
+            area = db.query(Area).filter(Area.id == area_id).first()
+            if not area:
+                # Fallback: el frontend puede guardar el nombre canónico en lugar del UUID
+                area = db.query(Area).filter(Area.nombre == area_id).first()
+            if area:
+                return area.codigo, area.tipo
+        finally:
+            db.close()
+    except Exception:
+        pass
+    return None, None
 

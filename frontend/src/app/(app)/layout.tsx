@@ -36,15 +36,15 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
 
   return (
     <div className="relative flex min-h-screen z-10">
-      {/* Sidebar fijo */}
+      {/* Sidebar: fijo en desktop, drawer en mobile */}
       <NavBar />
 
-      {/* Contenido principal desplazado por el sidebar */}
+      {/* Contenido principal */}
       <main
-        className="flex-1 overflow-y-auto"
-        style={{ marginLeft: "var(--sidebar-width, 260px)", minHeight: "100vh" }}
+        className="flex-1 overflow-y-auto md:ml-[260px] pt-14 md:pt-0"
+        style={{ minHeight: "100vh" }}
       >
-        <div className="max-w-5xl mx-auto px-8 py-8">
+        <div className="max-w-5xl mx-auto px-4 md:px-8 py-4 md:py-8">
           {children}
         </div>
       </main>

@@ -3,14 +3,19 @@
 # Inyección de dependencias FastAPI.
 #
 # Dependencias disponibles:
-#   get_bot()              — Singleton global del bot (backward compat)
-#   get_db()               — Sesión SQLAlchemy (generador, se cierra sola)
-#   get_conector_empresa() — ConectorOdoo configurado por empresa_id (Fase 4)
+#   get_bot()                 — Singleton global del bot
+#   get_db()                  — Sesión SQLAlchemy (generador, se cierra sola)
+#   get_conector_empresa()    — ConectorOdoo configurado por empresa_id
+#   get_usuario_autenticado() — Cualquier usuario con JWT válido (Sprint 1)
+#   get_solo_admin()          — Restringe a rol=admin (Sprint 1)
+#   get_agente_o_admin()      — Agente o admin (Sprint 1)
 # ============================================================
 
 import threading
 from typing import Generator, Optional
 
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 _bot_lock: threading.Lock = threading.Lock()
@@ -113,6 +118,80 @@ def get_conector_empresa(empresa_id: str) -> object:
 
         _conector_pool[empresa_id] = conector
         return conector
+
+
+# ── Dependencias de autenticación compartidas ─────────────────────────────────
+# Fuente única de verdad: todos los routers importan desde aquí.
+# Evita la duplicación de _solo_admin / _get_token_payload en cada router.
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+def get_usuario_autenticado(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+) -> dict:
+    """
+    Dependencia compartida — cualquier usuario con JWT válido.
+
+    Extrae y valida el Bearer token del header Authorization.
+    Retorna el payload completo del JWT (sub, email, rol, empresa_id, …).
+
+    Uso:
+        @router.get("/ruta")
+        def mi_endpoint(ctx: dict = Depends(get_usuario_autenticado)):
+            empresa_id = ctx["empresa_id"]
+    """
+    from app.api.auth.jwt_utils import decodificar_access_token
+
+    token = credentials.credentials if credentials else None
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No autenticado — se requiere Bearer token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    payload = decodificar_access_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return payload
+
+
+def get_solo_admin(
+    payload: dict = Depends(get_usuario_autenticado),
+) -> dict:
+    """
+    Dependencia — rol=admin exclusivamente.
+
+    Construida sobre get_usuario_autenticado: primero valida el token,
+    luego verifica el rol. HTTP 403 si el rol no es admin.
+    """
+    if payload.get("rol") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso restringido a administradores",
+        )
+    return payload
+
+
+def get_agente_o_admin(
+    payload: dict = Depends(get_usuario_autenticado),
+) -> dict:
+    """
+    Dependencia — rol=agente o rol=admin.
+
+    Permite el acceso a agentes (Dirección/Gerencia) y admins.
+    Roles de usuario (jefatura, tienda, etc.) reciben HTTP 403.
+    """
+    if payload.get("rol") not in ("admin", "agente"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso restringido a agentes y administradores",
+        )
+    return payload
 
 
 def invalidar_pool_empresa(empresa_id: str) -> None:

@@ -213,10 +213,22 @@ export default function ChatBubble({ role, content, tablaHtml }: Readonly<ChatBu
                   ),
                   tr: ({ children }) => <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>{children}</tr>,
                   hr: () => <hr className="my-3 opacity-20" />,
-                  img: ({ src, alt }) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={src} alt={alt ?? ""} className="max-w-full rounded-lg my-2" style={{ maxHeight: "320px", objectFit: "contain" }} />
-                  ),
+                  img: ({ src, alt }) => {
+                    // Redirigir imágenes del manual al proxy Next.js (que añade el Bearer token).
+                    // El backend genera URLs absolutas como http://localhost:8000/manuales/imagenes/x.png
+                    const proxied = src?.includes("/manuales/imagenes/")
+                      ? `/api/manuales/imagenes/${src.split("/manuales/imagenes/")[1]}`
+                      : src;
+                    return (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={proxied}
+                        alt={alt ?? ""}
+                        className="max-w-full rounded-lg my-2"
+                        style={{ maxHeight: "320px", objectFit: "contain" }}
+                      />
+                    );
+                  },
                   a: ({ href, children }) => (
                     <a href={href} target="_blank" rel="noopener noreferrer" className="underline text-purple-400 hover:text-purple-300">
                       {children}

@@ -8,10 +8,52 @@ import logging
 import os
 import time
 import hashlib
+from contextvars import ContextVar
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 import pandas as pd
+
+# ── Contexto de usuario activo por request (Sprint 3) ────────────────────────
+# Thread-safe y async-safe: cada request FastAPI tiene su propio contexto.
+# Se establece en app/api/routers/chat.py antes de llamar al bot.
+# Se lee en ConectorOdoo.buscar() y buscar_leer() para enriquecer filtros.
+_ctx_usuario_filtro: ContextVar[dict] = ContextVar("_ctx_usuario_filtro", default={})
+
+# Sub-roles que tienen visión global (sin filtro de área)
+# Incluye los nuevos valores canónicos y los legados por compatibilidad
+_SUB_ROLES_SIN_FILTRO: frozenset = frozenset({
+    "admin", "admin_global",  # admin siempre visión global
+    "director", "gerente",   # alta dirección
+})
+
+# Sub-roles que filtran por tienda/almacén (warehouse)
+_SUB_ROLES_FILTRO_TIENDA: frozenset = frozenset({
+    "tienda", "auxiliar",        # nuevos valores canónicos
+    "vendedor", "almacenero", "visor",  # legados
+})
+
+# Sub-roles que filtran por área (equipo/departamento)
+_SUB_ROLES_FILTRO_AREA: frozenset = frozenset({
+    "jefe", "coordinador",       # nuevos valores canónicos
+    "jefe_area", "contador", "rrhh",  # legados
+})
+
+# Mapa de modelos Odoo → (campo_filtro_tienda, campo_filtro_area)
+# None significa que ese modelo no aplica filtro de área para ese tipo de sub-rol
+_FILTROS_ODOO_POR_MODELO: Dict[str, Tuple[Optional[str], Optional[str]]] = {
+    "sale.order":         ("warehouse_id.code",              "team_id.name"),
+    "sale.order.line":    ("order_id.warehouse_id.code",     "order_id.team_id.name"),
+    "pos.order":          ("config_id.name",                 "config_id.name"),
+    "pos.order.line":     ("order_id.config_id.name",        "order_id.config_id.name"),
+    "stock.quant":        ("location_id.warehouse_id.code",  "location_id.complete_name"),
+    "stock.move":         ("warehouse_id.code",              "picking_type_id.warehouse_id.name"),
+    "stock.picking":      ("picking_type_id.warehouse_id.code", "picking_type_id.warehouse_id.name"),
+    "account.move":       ("team_id.name",                   "team_id.name"),
+    # compras y RRHH: no restringir por área (datos corporativos compartidos)
+    "purchase.order":     (None, None),
+    "hr.employee":        (None, None),
+}
 
 from dotenv import load_dotenv
 
@@ -63,7 +105,59 @@ class ConectorOdoo:
     """
     Conector profesional para Odoo con cache y optimizaciones.
     """
-    
+
+    # ── Filtrado por área (Sprint 3) ──────────────────────────────────────────
+
+    @staticmethod
+    def _aplicar_filtro_area(filtro: List, modelo: str, contexto: dict) -> List:
+        """
+        Enriquece un filtro de dominio Odoo con restricciones de área/tienda
+        basadas en el sub_rol y área del usuario actual.
+
+        Reglas:
+        - admin (rol='admin') o sub_rol in {'admin_global', 'director', 'gerente'}
+          → sin filtro adicional (visión global).
+        - sub_rol in {'vendedor', 'almacenero', 'visor'} + area_codigo
+          → filtra por warehouse/tienda.
+        - sub_rol in {'jefe_area', 'contador', 'rrhh'} + area_codigo
+          → filtra por equipo/área.
+        - Sin area_codigo o sub_rol desconocido → sin filtro adicional (seguro por defecto).
+        - Modelos sin entrada en _FILTROS_ODOO_POR_MODELO → sin filtro.
+
+        Args:
+            filtro:   Dominio Odoo original (puede ser None o lista vacía).
+            modelo:   Nombre del modelo Odoo (e.g. 'sale.order').
+            contexto: Dict con claves 'rol', 'sub_rol', 'area_codigo'.
+
+        Returns:
+            Lista de filtros posiblemente enriquecida (nunca modifica la lista original).
+        """
+        rol = contexto.get("rol", "")
+        sub_rol = contexto.get("sub_rol") or ""
+        area_codigo = contexto.get("area_codigo") or ""
+
+        # Visión global — sin restricción
+        if rol == "admin" or sub_rol in _SUB_ROLES_SIN_FILTRO or not area_codigo or not sub_rol:
+            return list(filtro) if filtro else []
+
+        config_modelo = _FILTROS_ODOO_POR_MODELO.get(modelo)
+        if config_modelo is None:
+            # Modelo no mapeado → sin filtro (conservador)
+            return list(filtro) if filtro else []
+
+        campo_tienda, campo_area = config_modelo
+        resultado = list(filtro) if filtro else []
+
+        if sub_rol in _SUB_ROLES_FILTRO_TIENDA:
+            if campo_tienda:
+                resultado.append((campo_tienda, "=", area_codigo))
+        elif sub_rol in _SUB_ROLES_FILTRO_AREA:
+            if campo_area:
+                resultado.append((campo_area, "ilike", area_codigo))
+        # sub_rol desconocido → sin filtro adicional
+
+        return resultado
+
     def __init__(self, config: ConfiguracionOdoo = None, usuario: str = "system"):
         """Inicializa el conector."""
         self.config = config or self._cargar_config()
@@ -265,6 +359,11 @@ class ConectorOdoo:
             info = self.modelos_principales.get(modelo)
             campos = info.get('campos_default', ['name']) if info else ['name', 'id']
 
+        # ── Sprint 3: enriquecer filtro con contexto de área del usuario ──────
+        _ctx = _ctx_usuario_filtro.get()
+        if _ctx:
+            filtro = self._aplicar_filtro_area(filtro or [], modelo, _ctx)
+
         cache_key = self._make_cache_key(modelo, filtro, campos, limite, orden)
         cached = self._get_cache(cache_key)
         if cached is not None:
@@ -316,6 +415,11 @@ class ConectorOdoo:
         if campos is None:
             info = self.modelos_principales.get(modelo)
             campos = info.get('campos_default', ['name']) if info else ['name', 'id']
+
+        # ── Sprint 3: enriquecer filtro con contexto de área del usuario ──────
+        _ctx = _ctx_usuario_filtro.get()
+        if _ctx:
+            filtro = self._aplicar_filtro_area(filtro or [], modelo, _ctx)
 
         cache_key = self._make_cache_key(modelo, filtro, campos, limite, orden)
         cached = self._get_cache(cache_key)
