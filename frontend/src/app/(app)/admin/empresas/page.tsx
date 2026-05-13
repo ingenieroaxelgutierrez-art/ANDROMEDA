@@ -5,6 +5,7 @@ import {
   getEmpresas, crearEmpresa, actualizarEmpresa, eliminarEmpresa,
   ApiError, EmpresaSaaS, EmpresaCreate,
 } from "@/lib/api";
+import { useI18n } from "@/components/I18nProvider";
 
 const PLAN_LABELS: Record<string, string> = {
   basico:       "Básico",
@@ -105,6 +106,7 @@ function EmpresaForm({
   saving: boolean;
   error: string | null;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<FormData>(() => defaultForm(inicial));
 
   function set<K extends keyof FormData>(key: K, val: FormData[K]) {
@@ -126,31 +128,31 @@ function EmpresaForm({
       )}
 
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Nombre empresa">
+        <Field label={t("empresas.fieldNombre")}>
           <input className="input-dark w-full text-sm" required value={form.nombre}
                  onChange={(e) => set("nombre", e.target.value)} placeholder="Acme Corp" />
         </Field>
-        <Field label="Plan">
+        <Field label={t("empresas.fieldPlan")}>
           <select className="input-dark w-full text-sm" value={form.plan}
                   onChange={(e) => set("plan", e.target.value as FormData["plan"])}>
-            <option value="basico">Básico</option>
-            <option value="profesional">Profesional</option>
-            <option value="enterprise">Enterprise</option>
+            <option value="basico">{t("empresas.planBasico")}</option>
+            <option value="profesional">{t("empresas.planPro")}</option>
+            <option value="enterprise">{t("empresas.planEnt")}</option>
           </select>
         </Field>
       </div>
 
-      <Field label="URL Odoo">
+      <Field label={t("empresas.fieldOdooUrl")}>
         <input className="input-dark w-full text-sm" type="url" required value={form.odoo_url}
                onChange={(e) => set("odoo_url", e.target.value)} placeholder="https://miempresa.odoo.com" />
       </Field>
 
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Base de datos">
+        <Field label={t("empresas.fieldOdooDb")}>
           <input className="input-dark w-full text-sm" required value={form.odoo_db}
                  onChange={(e) => set("odoo_db", e.target.value)} placeholder="mi_db" />
         </Field>
-        <Field label="Versión Odoo">
+        <Field label={t("empresas.fieldVersion")}>
           <select className="input-dark w-full text-sm" value={form.version_odoo}
                   onChange={(e) => set("version_odoo", Number(e.target.value))}>
             {VERSIONES_ODOO.map((v) => <option key={v} value={v}>{v}</option>)}
@@ -159,11 +161,11 @@ function EmpresaForm({
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Usuario Odoo">
+        <Field label={t("empresas.fieldUser")}>
           <input className="input-dark w-full text-sm" required value={form.odoo_usuario}
                  onChange={(e) => set("odoo_usuario", e.target.value)} placeholder="admin" />
         </Field>
-        <Field label={inicial ? "Nueva contraseña (opcional)" : "Contraseña Odoo"}>
+        <Field label={inicial ? t("empresas.fieldPwEdit") : t("empresas.fieldPw")}>
           <input className="input-dark w-full text-sm" type="password"
                  required={!inicial} value={form.odoo_password}
                  onChange={(e) => set("odoo_password", e.target.value)} placeholder="••••••••" />
@@ -171,15 +173,15 @@ function EmpresaForm({
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Máx. usuarios">
+        <Field label={t("empresas.fieldMaxUsers")}>
           <input className="input-dark w-full text-sm" type="number" min={1} max={500}
                  value={form.max_usuarios} onChange={(e) => set("max_usuarios", Number(e.target.value))} />
         </Field>
-        <Field label="Estado">
+        <Field label={t("empresas.fieldStatus")}>
           <label className="flex items-center gap-2 mt-1 cursor-pointer">
             <input type="checkbox" className="w-4 h-4 accent-andromeda-500"
                    checked={form.activa} onChange={(e) => set("activa", e.target.checked)} />
-            <span className="text-sm text-white">Empresa activa</span>
+            <span className="text-sm text-white">{t("empresas.checkActive")}</span>
           </label>
         </Field>
       </div>
@@ -188,12 +190,12 @@ function EmpresaForm({
         <button type="button" onClick={onCancel}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors"
                 style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>
-          Cancelar
+          {t("common.cancel")}
         </button>
         <button type="submit" disabled={saving}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-opacity"
                 style={{ background: "linear-gradient(135deg,#667eea,#764ba2)", color: "#fff", opacity: saving ? 0.6 : 1 }}>
-          {saving ? "Guardando…" : inicial ? "Guardar cambios" : "Crear empresa"}
+          {saving ? t("common.saving") : inicial ? t("common.saveChanges") : t("empresas.btnCreate")}
         </button>
       </div>
     </form>
@@ -203,6 +205,7 @@ function EmpresaForm({
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function EmpresasPage() {
+  const { t } = useI18n();
   const [empresas, setEmpresas]   = useState<EmpresaSaaS[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
@@ -216,7 +219,7 @@ export default function EmpresasPage() {
     try {
       setEmpresas(await getEmpresas());
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Error al cargar empresas.");
+      setError(err instanceof ApiError ? err.message : t("empresas.errorLoad"));
     } finally {
       setLoading(false);
     }
@@ -237,7 +240,7 @@ export default function EmpresasPage() {
       }
       setModal(null);
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Error al guardar.");
+      setFormError(err instanceof ApiError ? err.message : t("common.errorSave"));
     } finally {
       setSaving(false);
     }
@@ -250,7 +253,7 @@ export default function EmpresasPage() {
       setEmpresas((prev) => prev.filter((e) => e.id !== empresa.id));
       setConfirmDelete(null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Error al eliminar.");
+      setError(err instanceof ApiError ? err.message : t("common.errorDelete"));
     } finally {
       setSaving(false);
     }
@@ -268,9 +271,9 @@ export default function EmpresasPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-white tracking-tight">Empresas</h2>
+          <h2 className="text-2xl font-black text-white tracking-tight">{t("empresas.title")}</h2>
           <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-            {empresas.length} empresa{empresas.length !== 1 ? "s" : ""} registrada{empresas.length !== 1 ? "s" : ""}
+            {empresas.length} {t("empresas.registradas")}
           </p>
         </div>
         <button
@@ -281,11 +284,11 @@ export default function EmpresasPage() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
-          Nueva empresa
+          {t("empresas.newBtn")}
         </button>
       </div>
 
-      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>Cargando…</p>}
+      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>{t("common.loading")}</p>}
       {error && (
         <div className="px-4 py-3 rounded-lg text-sm"
              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
@@ -300,11 +303,11 @@ export default function EmpresasPage() {
           {/* Encabezados */}
           <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wider"
                style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.35)" }}>
-            <span>Empresa</span>
-            <span className="text-center">Plan</span>
-            <span className="text-center">Usuarios</span>
-            <span className="text-center">Estado</span>
-            <span className="text-right">Acciones</span>
+            <span>{t("empresas.colEmpresa")}</span>
+            <span className="text-center">{t("empresas.colPlan")}</span>
+            <span className="text-center">{t("empresas.colUsers")}</span>
+            <span className="text-center">{t("common.colStatus")}</span>
+            <span className="text-right">{t("common.colActions")}</span>
           </div>
 
           {empresas.map((emp) => (
@@ -343,7 +346,7 @@ export default function EmpresasPage() {
                   color:      emp.activa ? "#34d399" : "#f87171",
                 }}
               >
-                {emp.activa ? "Activa" : "Inactiva"}
+                {emp.activa ? t("common.statusActiveF") : t("common.statusInactiveF")}
               </button>
 
               {/* Acciones */}
@@ -383,16 +386,16 @@ export default function EmpresasPage() {
       {!loading && empresas.length === 0 && !error && (
         <div className="text-center py-16 rounded-xl"
              style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)" }}>
-          <p className="text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>Sin empresas registradas aún.</p>
+          <p className="text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>{t("empresas.emptyMsg")}</p>
           <button onClick={() => setModal("crear")} className="mt-3 text-sm text-andromeda-400 hover:underline">
-            Crear la primera empresa
+            {t("empresas.emptyBtn")}
           </button>
         </div>
       )}
 
       {/* Modal crear/editar */}
       {modal && modal !== "crear" && (
-        <Modal title={`Editar — ${modal.nombre}`} onClose={() => setModal(null)}>
+        <Modal title={`${t("empresas.modalCreate")} — ${modal.nombre}`} onClose={() => setModal(null)}>
           <EmpresaForm
             inicial={modal}
             onSave={(data) => handleSave(data, modal)}
@@ -403,7 +406,7 @@ export default function EmpresasPage() {
         </Modal>
       )}
       {modal === "crear" && (
-        <Modal title="Nueva empresa" onClose={() => setModal(null)}>
+        <Modal title={t("empresas.modalCreate")} onClose={() => setModal(null)}>
           <EmpresaForm
             onSave={(data) => handleSave(data)}
             onCancel={() => setModal(null)}
@@ -415,22 +418,22 @@ export default function EmpresasPage() {
 
       {/* Confirmación eliminar */}
       {confirmDelete && (
-        <Modal title="Eliminar empresa" onClose={() => setConfirmDelete(null)}>
+        <Modal title={t("empresas.modalDelete")} onClose={() => setConfirmDelete(null)}>
           <div className="space-y-4">
             <p className="text-sm" style={{ color: "rgba(255,255,255,0.65)" }}>
-              ¿Estás seguro de que deseas eliminar{" "}
-              <span className="font-semibold text-white">{confirmDelete.nombre}</span>? Esta acción no se puede deshacer.
+              {t("empresas.confirmDelete")}{" "}
+              <span className="font-semibold text-white">{confirmDelete.nombre}</span>? {t("common.cannotUndo")}
             </p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmDelete(null)}
                       className="flex-1 py-2.5 rounded-xl text-sm font-medium"
                       style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>
-                Cancelar
+                {t("common.cancel")}
               </button>
               <button onClick={() => handleDelete(confirmDelete)} disabled={saving}
                       className="flex-1 py-2.5 rounded-xl text-sm font-bold"
                       style={{ background: "rgba(239,68,68,0.8)", color: "#fff", opacity: saving ? 0.6 : 1 }}>
-                {saving ? "Eliminando…" : "Eliminar"}
+              {saving ? t("common.deleting") : t("common.delete")}
               </button>
             </div>
           </div>

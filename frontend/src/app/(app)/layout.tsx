@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { estaLogueado } from "@/lib/auth";
 import NavBar from "@/components/NavBar";
+import { useI18n } from "@/components/I18nProvider";
 
 export default function AppLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const router   = useRouter();
   const pathname = usePathname();
+  const { t }    = useI18n();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -27,7 +29,7 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
           </svg>
           <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>
-            Verificando sesión…
+            {t("common.verifyingSession")}
           </span>
         </div>
       </div>

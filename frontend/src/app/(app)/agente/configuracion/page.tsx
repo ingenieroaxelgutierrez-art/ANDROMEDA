@@ -2,6 +2,7 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { getEmpresaPropia, actualizarEmpresaPropia, ApiError, ConfigEmpresaPropia } from "@/lib/api";
+import { useI18n } from "@/components/I18nProvider";
 
 const VERSIONES_ODOO = [12, 13, 14, 15, 16, 17];
 
@@ -17,6 +18,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 export default function AgenteConfiguracionPage() {
+  const { t } = useI18n();
   const [empresa, setEmpresa]   = useState<ConfigEmpresaPropia | null>(null);
   const [form, setForm]         = useState<ConfigEmpresaPropia & { odoo_password: string } | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -30,7 +32,7 @@ export default function AgenteConfiguracionPage() {
         setEmpresa(e);
         setForm({ ...e, odoo_password: "" });
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Error al cargar la configuración."))
+      .catch((err) => setError(err instanceof ApiError ? err.message : t("agenteExt.errorLoadConfig")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -60,7 +62,7 @@ export default function AgenteConfiguracionPage() {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Error al guardar.");
+      setError(err instanceof ApiError ? err.message : t("agenteExt.errorSave"));
     } finally {
       setSaving(false);
     }
@@ -69,13 +71,13 @@ export default function AgenteConfiguracionPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h2 className="text-2xl font-black text-white tracking-tight">Configuración de mi empresa</h2>
+        <h2 className="text-2xl font-black text-white tracking-tight">{t("agente.configTitle")}</h2>
         <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-          Conexión y ajustes del ERP de tu organización
+          {t("agenteExt.configSub")}
         </p>
       </div>
 
-      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>Cargando…</p>}
+      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>{t("common.loading")}</p>}
       {error && (
         <div className="px-4 py-3 rounded-lg text-sm"
              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
@@ -85,7 +87,7 @@ export default function AgenteConfiguracionPage() {
       {success && (
         <div className="px-4 py-3 rounded-lg text-sm"
              style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "#34d399" }}>
-          Configuración guardada correctamente.
+          {t("agenteExt.configSaved")}
         </div>
       )}
 
@@ -103,7 +105,7 @@ export default function AgenteConfiguracionPage() {
           <div>
             <p className="font-bold text-white">{empresa.nombre}</p>
             <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.5)" }}>
-              {empresa.activa ? "Empresa activa" : "Empresa inactiva"} · Odoo {empresa.version_odoo}
+              {empresa.activa ? t("agenteExt.companyActive") : t("agenteExt.companyInactive")} · Odoo {empresa.version_odoo}
             </p>
           </div>
           <span className="ml-auto text-xs px-2.5 py-1 rounded-full font-medium"
@@ -112,7 +114,7 @@ export default function AgenteConfiguracionPage() {
                   border:     empresa.activa ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(239,68,68,0.3)",
                   color:      empresa.activa ? "#34d399" : "#f87171",
                 }}>
-            {empresa.activa ? "Activa" : "Inactiva"}
+            {empresa.activa ? t("common.statusActiveF") : t("common.statusInactiveF")}
           </span>
         </div>
       )}
@@ -121,20 +123,20 @@ export default function AgenteConfiguracionPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <section className="rounded-xl p-6 space-y-4"
                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <h3 className="text-sm font-bold text-white">Conexión Odoo</h3>
+            <h3 className="text-sm font-bold text-white">{t("agenteExt.sectionOdoo")}</h3>
 
-            <Field label="URL de Odoo">
+            <Field label={t("agente.odooUrl")}>
               <input className="input-dark w-full text-sm" type="url" value={form.odoo_url}
                      onChange={(e) => set("odoo_url", e.target.value)}
                      placeholder="https://miempresa.odoo.com" />
             </Field>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Base de datos">
+              <Field label={t("agente.odooDb")}>
                 <input className="input-dark w-full text-sm" value={form.odoo_db}
                        onChange={(e) => set("odoo_db", e.target.value)} placeholder="mi_db" />
               </Field>
-              <Field label="Versión Odoo">
+              <Field label={t("agenteExt.fieldVersion")}>
                 <select className="input-dark w-full text-sm" value={form.version_odoo}
                         onChange={(e) => set("version_odoo", Number(e.target.value))}>
                   {VERSIONES_ODOO.map((v) => <option key={v} value={v}>{v}</option>)}
@@ -143,11 +145,11 @@ export default function AgenteConfiguracionPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Usuario Odoo">
+              <Field label={t("agente.odooUser")}>
                 <input className="input-dark w-full text-sm" value={form.odoo_usuario}
                        onChange={(e) => set("odoo_usuario", e.target.value)} placeholder="admin" />
               </Field>
-              <Field label="Contraseña (dejar vacío para no cambiar)" hint="Se actualiza solo si escribes algo">
+              <Field label={t("agenteExt.fieldPwLabel")} hint={t("agenteExt.fieldPwHint")}>
                 <input className="input-dark w-full text-sm" type="password" value={form.odoo_password}
                        onChange={(e) => set("odoo_password", e.target.value)} placeholder="••••••••" />
               </Field>
@@ -161,7 +163,7 @@ export default function AgenteConfiguracionPage() {
                     color: "#fff",
                     opacity: saving ? 0.6 : 1,
                   }}>
-            {saving ? "Guardando…" : "Guardar cambios"}
+            {saving ? t("common.saving") : t("agenteExt.saveChanges")}
           </button>
         </form>
       )}

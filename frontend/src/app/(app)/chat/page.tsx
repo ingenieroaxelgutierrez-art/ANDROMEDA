@@ -4,11 +4,13 @@ import { useState, useRef, useEffect, FormEvent } from "react";
 import Image from "next/image";
 import { enviarMensaje, getMe, ApiError, MensajeChat } from "@/lib/api";
 import ChatBubble from "@/components/ChatBubble";
+import { useI18n } from "@/components/I18nProvider";
 
 const SESSION_KEY = "andromeda_chat_session_id";
 const HISTORY_KEY = "andromeda_chat_history";
 
 export default function ChatPage() {
+  const { t } = useI18n();
   const [sessionId] = useState<string>(() => {
     if (typeof window === "undefined") return crypto.randomUUID();
     const stored = sessionStorage.getItem(SESSION_KEY);
@@ -91,7 +93,7 @@ export default function ChatPage() {
           <Image src="/logo.png" alt="ANDROMEDA" width={36} height={36} className="w-full h-full object-cover" />
         </div>
         <div>
-          <h2 className="text-lg font-bold text-white leading-tight">Chat con ANDROMEDA</h2>
+          <h2 className="text-lg font-bold text-white leading-tight">{t("chat.title")}</h2>
           <span
             className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
             style={{
@@ -104,7 +106,7 @@ export default function ChatPage() {
               className="w-1.5 h-1.5 rounded-full"
               style={{ background: empresaId ? "#34d399" : "rgba(255,255,255,0.3)" }}
             />
-            {empresaId ? "Conectado" : "Cargando sesión…"}
+            {empresaId ? t("chat.connected") : t("chat.connecting")}
           </span>
         </div>
       </div>
@@ -126,9 +128,9 @@ export default function ChatPage() {
               <Image src="/logo.png" alt="ANDROMEDA" width={64} height={64} className="w-full h-full object-cover" />
             </div>
             <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
-              ¡Hola! Escribe una consulta sobre tu ERP, por ejemplo:
+              {t("chat.emptyHint")}
               <br />
-              <em style={{ color: "rgba(255,255,255,0.5)" }}>«¿Cuánto se vendió este mes?»</em>
+              <em style={{ color: "rgba(255,255,255,0.5)" }}>{t("chat.emptyExample")}</em>
             </p>
           </div>
         ) : (
@@ -179,7 +181,7 @@ export default function ChatPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={loading || !empresaId}
-          placeholder={empresaId ? "Escribe tu consulta aquí…" : "Cargando sesión…"}
+          placeholder={empresaId ? t("chat.placeholder") : t("chat.connecting")}
           className="input-dark flex-1"
         />
         <button
@@ -191,7 +193,7 @@ export default function ChatPage() {
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
-          Enviar
+          {t("chat.send")}
         </button>
       </form>
     </div>

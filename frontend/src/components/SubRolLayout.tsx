@@ -18,6 +18,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { estaLogueado, getSubRol, getRedirectPath, getRol } from "@/lib/auth";
+import { useI18n } from "@/components/I18nProvider";
 
 interface SubRolLayoutProps {
   /** Sub-roles permitidos para esta ruta */
@@ -29,6 +30,7 @@ interface SubRolLayoutProps {
 
 export default function SubRolLayout({ allowed, redirectTo, children }: SubRolLayoutProps) {
   const router  = useRouter();
+  const { t }   = useI18n();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -56,7 +58,7 @@ export default function SubRolLayout({ allowed, redirectTo, children }: SubRolLa
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
           <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>
-            Verificando acceso…
+            {t("common.verifyingAccess")}
           </span>
         </div>
       </div>

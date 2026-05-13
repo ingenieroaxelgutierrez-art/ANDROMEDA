@@ -4,11 +4,13 @@ import { useState, useRef, useEffect, FormEvent } from "react";
 import Image from "next/image";
 import { enviarMensaje, getMe, ApiError, MensajeChat } from "@/lib/api";
 import ChatBubble from "@/components/ChatBubble";
+import { useI18n } from "@/components/I18nProvider";
 
 const AGENTE_SESSION_KEY = "andromeda_agente_session_id";
 const AGENTE_HISTORY_KEY = "andromeda_agente_history";
 
 export default function AgenteChatPage() {
+  const { t } = useI18n();
   const [sessionId] = useState<string>(() => {
     if (typeof window === "undefined") return crypto.randomUUID();
     const stored = sessionStorage.getItem(AGENTE_SESSION_KEY);
@@ -68,7 +70,7 @@ export default function AgenteChatPage() {
       const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined);
       setMensajes(resp.historial);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Error al enviar el mensaje.");
+      setError(err instanceof ApiError ? err.message : t("chat.errorSend"));
       setMensajes((prev) => prev.slice(0, -1));
     } finally {
       setLoading(false);
@@ -84,7 +86,7 @@ export default function AgenteChatPage() {
           <Image src="/logo.png" alt="ANDROMEDA" width={36} height={36} className="w-full h-full object-cover" />
         </div>
         <div>
-          <h2 className="text-lg font-bold text-white leading-tight">Chat con ANDROMEDA</h2>
+          <h2 className="text-lg font-bold text-white leading-tight">{t("chat.title")}</h2>
           <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
                 style={{
                   background: empresaId ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.08)",
@@ -93,7 +95,7 @@ export default function AgenteChatPage() {
                 }}>
             <span className="w-1.5 h-1.5 rounded-full"
                   style={{ background: empresaId ? "#34d399" : "rgba(255,255,255,0.3)" }} />
-            {empresaId ? (nombreEmpresa ? `Hola, ${nombreEmpresa}` : "Conectado") : "Cargando sesión…"}
+            {empresaId ? (nombreEmpresa ? `${t("chat.hello")}, ${nombreEmpresa}` : t("chat.connected")) : t("chat.connecting")}
           </span>
         </div>
       </div>
@@ -108,9 +110,9 @@ export default function AgenteChatPage() {
               <Image src="/logo.png" alt="ANDROMEDA" width={64} height={64} className="w-full h-full object-cover" />
             </div>
             <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
-              ¡Hola! Escribe una consulta sobre tu ERP, por ejemplo:
+              {t("chat.emptyHint")}
               <br />
-              <em style={{ color: "rgba(255,255,255,0.5)" }}>«¿Cuánto se vendió este mes?»</em>
+              <em style={{ color: "rgba(255,255,255,0.5)" }}>{t("chat.emptyExample")}</em>
             </p>
           </div>
         ) : (
@@ -148,7 +150,7 @@ export default function AgenteChatPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={loading || !empresaId}
-          placeholder={empresaId ? "Escribe tu consulta aquí…" : "Cargando sesión…"}
+          placeholder={empresaId ? t("chat.placeholder") : t("chat.connecting")}
           className="input-dark flex-1"
         />
         <button
@@ -160,7 +162,7 @@ export default function AgenteChatPage() {
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
-          Enviar
+          {t("chat.send")}
         </button>
       </form>
     </div>

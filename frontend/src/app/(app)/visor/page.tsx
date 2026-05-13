@@ -1,8 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import { useI18n } from "@/components/I18nProvider";
 
 export default function VisorPage() {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
       <div
@@ -13,10 +15,10 @@ export default function VisorPage() {
       </div>
 
       <div className="space-y-2 max-w-md">
-        <h2 className="text-2xl font-bold text-white">Bienvenido a ANDROMEDA</h2>
+        <h2 className="text-2xl font-bold text-white">{t("visor.welcomeTitle")}</h2>
         <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
-          Tu perfil tiene acceso de <strong style={{ color: "rgba(255,255,255,0.75)" }}>Visor</strong>.
-          Puedes consultar los manuales y documentación del sistema desde el menú lateral.
+          {t("visor.description")} <strong style={{ color: "rgba(255,255,255,0.75)" }}>Visor</strong>.
+          {t("visor.description2")}
         </p>
       </div>
 
@@ -32,7 +34,7 @@ export default function VisorPage() {
           <path strokeLinecap="round" strokeLinejoin="round"
             d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        Acceso limitado — sin datos operacionales
+        {t("visor.badge")}
       </div>
     </div>
   );

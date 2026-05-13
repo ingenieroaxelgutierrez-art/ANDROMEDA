@@ -1,3 +1,5 @@
+"use client";
+
 interface ChatBubbleProps {
   role: "user" | "assistant";
   content: string;
@@ -8,6 +10,7 @@ interface ChatBubbleProps {
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useI18n } from "@/components/I18nProvider";
 
 // ── Tipos de bloque de contenido ─────────────────────────────────────────────
 type ContentPart =
@@ -70,7 +73,7 @@ function splitContent(raw: string): ContentPart[] {
  *  - Si contiene <andromeda-chart> (Plotly completo) → <iframe srcDoc> (los scripts SÍ ejecutan)
  *  - Si no → dangerouslySetInnerHTML (imágenes base64, tablas simples, sin scripts)
  */
-function renderHtmlPart(html: string, key: number): React.ReactElement {
+function renderHtmlPart(html: string, key: number, chartLabel: string): React.ReactElement {
   const plotlyMatch = /^<andromeda-chart>([\s\S]*)<\/andromeda-chart>$/i.exec(html.trim());
   if (plotlyMatch) {
     return (
@@ -82,7 +85,7 @@ function renderHtmlPart(html: string, key: number): React.ReactElement {
         <iframe
           srcDoc={plotlyMatch[1]}
           style={{ width: "100%", height: "500px", border: "none", display: "block", borderRadius: "inherit" }}
-          title={`Gráfica ${key}`}
+          title={`${chartLabel} ${key}`}
           sandbox="allow-scripts"
         />
       </div>
@@ -103,6 +106,8 @@ function renderHtmlPart(html: string, key: number): React.ReactElement {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function ChatBubble({ role, content, tablaHtml }: Readonly<ChatBubbleProps>) {
+  const { t } = useI18n();
+  const chartLabel = t("common.chart");
   const isUser = role === "user";
   const parts = isUser ? null : splitContent(content);
 
@@ -154,13 +159,13 @@ export default function ChatBubble({ role, content, tablaHtml }: Readonly<ChatBu
                     width="100%"
                     height={`${part.height}px`}
                     frameBorder="0"
-                    title={`Gráfica ${i}`}
+                  title={`${chartLabel} ${i}`}
                     style={{ display: "block", borderRadius: "inherit" }}
                   />
                 </div>
               ) : part.type === "html" ? (
                 /* HTML embebido: gráfica Plotly (andromeda-chart → iframe) o Matplotlib base64 */
-                renderHtmlPart(part.html, i)
+                renderHtmlPart(part.html, i, chartLabel)
               ) : (
                 <ReactMarkdown
                 key={i}

@@ -5,6 +5,7 @@ import {
   getUsuarios, crearUsuario, actualizarUsuario, eliminarUsuario,
   getEmpresas, ApiError, UsuarioSaaS, UsuarioCreate, EmpresaSaaS,
 } from "@/lib/api";
+import { useI18n } from "@/components/I18nProvider";
 
 const ROL_LABELS: Record<string, string> = { admin: "Admin", agente: "Agente", usuario: "Usuario" };
 const ROL_COLORS: Record<string, string> = {
@@ -86,6 +87,7 @@ function FilaAreaUsuario({ u }: { u: UsuarioSaaS }) {
 }
 
 function GrupoArea({ nombre, usuarios }: { nombre: string; usuarios: UsuarioSaaS[] }) {
+  const { t } = useI18n();
   const [abierto, setAbierto] = useState(true);
   const color = AREA_COLORS[nombre] ?? "#667eea";
   return (
@@ -116,7 +118,7 @@ function GrupoArea({ nombre, usuarios }: { nombre: string; usuarios: UsuarioSaaS
         <div className="px-3 pb-3 pt-1 space-y-1.5">
           {usuarios.length === 0 ? (
             <p className="text-xs text-center py-4" style={{ color: "rgba(255,255,255,0.25)" }}>
-              Sin usuarios en esta área
+              {t("usuarios.noUsersArea")}
             </p>
           ) : (
             usuarios.map((u) => <FilaAreaUsuario key={u.id} u={u} />)
@@ -201,6 +203,7 @@ function UsuarioForm({
   saving: boolean;
   error: string | null;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState<FormData>(() => defaultForm(inicial));
   function set<K extends keyof FormData>(k: K, v: FormData[K]) { setForm((p) => ({ ...p, [k]: v })); }
 
@@ -213,24 +216,24 @@ function UsuarioForm({
         </div>
       )}
 
-      <Field label="Nombre completo">
+      <Field label={t("usuarios.fieldNombre")}>
         <input className="input-dark w-full text-sm" required value={form.nombre}
                onChange={(e) => set("nombre", e.target.value)} placeholder="Juan Pérez" />
       </Field>
 
-      <Field label="Correo electrónico">
+      <Field label={t("usuarios.fieldEmail")}>
         <input className="input-dark w-full text-sm" type="email" required value={form.email}
                onChange={(e) => set("email", e.target.value)} placeholder="juan@empresa.com" />
       </Field>
 
-      <Field label={inicial ? "Nueva contraseña (dejar vacío para no cambiar)" : "Contraseña"}>
+      <Field label={inicial ? t("usuarios.fieldPwEdit") : t("usuarios.fieldPw")}>
         <input className="input-dark w-full text-sm" type="password"
                required={!inicial} value={form.password}
                onChange={(e) => set("password", e.target.value)} placeholder="••••••••" />
       </Field>
 
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Rol">
+        <Field label={t("usuarios.fieldRol")}>
           <select className="input-dark w-full text-sm" value={form.rol}
                   onChange={(e) => set("rol", e.target.value as FormData["rol"])}>
             <option value="usuario">Usuario</option>
@@ -239,10 +242,10 @@ function UsuarioForm({
           </select>
         </Field>
 
-        <Field label="Empresa asignada">
+        <Field label={t("usuarios.fieldEmpresa")}>
           <select className="input-dark w-full text-sm" value={form.empresa_id}
                   onChange={(e) => set("empresa_id", e.target.value)}>
-            <option value="">— Sin empresa —</option>
+            <option value="">{t("common.noCompany")}</option>
             {empresas.map((emp) => (
               <option key={emp.id} value={emp.id}>{emp.nombre}</option>
             ))}
@@ -250,31 +253,31 @@ function UsuarioForm({
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Área">
+        <Field label={t("usuarios.fieldArea")}>
           <select className="input-dark w-full text-sm" value={form.area_id}
                   onChange={(e) => set("area_id", e.target.value)}>
-            <option value="">— Sin área —</option>
+            <option value="">{t("common.noArea")}</option>
             {AREAS_ORDEN.map((nombre) => (
               <option key={nombre} value={nombre}>{nombre}</option>
             ))}
           </select>
         </Field>
 
-        <Field label="Sub-rol">
+        <Field label={t("usuarios.fieldSubRol")}>
           <select className="input-dark w-full text-sm" value={form.sub_rol}
                   onChange={(e) => set("sub_rol", e.target.value)}>
-            <option value="">— Sin sub-rol —</option>
+            <option value="">{t("common.noSubRol")}</option>
             {Object.entries(SUB_ROL_LABEL).map(([val, label]) => (
               <option key={val} value={val}>{label}</option>
             ))}
           </select>
         </Field>
       </div>
-      <Field label="Estado">
+      <Field label={t("usuarios.fieldStatus")}>
         <label className="flex items-center gap-2 mt-1 cursor-pointer">
           <input type="checkbox" className="w-4 h-4 accent-andromeda-500"
                  checked={form.activo} onChange={(e) => set("activo", e.target.checked)} />
-          <span className="text-sm text-white">Usuario activo</span>
+          <span className="text-sm text-white">{t("usuarios.checkActive")}</span>
         </label>
       </Field>
 
@@ -282,12 +285,12 @@ function UsuarioForm({
         <button type="button" onClick={onCancel}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium"
                 style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>
-          Cancelar
+          {t("common.cancel")}
         </button>
         <button type="submit" disabled={saving}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold"
                 style={{ background: "linear-gradient(135deg,#667eea,#764ba2)", color: "#fff", opacity: saving ? 0.6 : 1 }}>
-          {saving ? "Guardando…" : inicial ? "Guardar cambios" : "Crear usuario"}
+          {saving ? t("common.saving") : inicial ? t("common.saveChanges") : t("usuarios.btnCreate")}
         </button>
       </div>
     </form>
@@ -297,6 +300,7 @@ function UsuarioForm({
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function UsuariosPage() {
+  const { t } = useI18n();
   const [usuarios, setUsuarios]   = useState<UsuarioSaaS[]>([]);
   const [empresas, setEmpresas]   = useState<EmpresaSaaS[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -312,7 +316,7 @@ export default function UsuariosPage() {
   useEffect(() => {
     Promise.all([getUsuarios(), getEmpresas()])
       .then(([u, e]) => { setUsuarios(u); setEmpresas(e); })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Error al cargar datos."))
+      .catch((err) => setError(err instanceof ApiError ? err.message : t("usuarios.errorLoad")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -348,7 +352,7 @@ export default function UsuariosPage() {
       }
       setModal(null);
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Error al guardar.");
+      setFormError(err instanceof ApiError ? err.message : t("common.errorSave"));
     } finally {
       setSaving(false);
     }
@@ -408,9 +412,9 @@ export default function UsuariosPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-white tracking-tight">Usuarios</h2>
+          <h2 className="text-2xl font-black text-white tracking-tight">{t("usuarios.title")}</h2>
           <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-            {usuarios.length} usuario{usuarios.length !== 1 ? "s" : ""} registrado{usuarios.length !== 1 ? "s" : ""}
+            {usuarios.length} {t("usuarios.registrados")}
           </p>
         </div>
         <button
@@ -421,7 +425,7 @@ export default function UsuariosPage() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
-          Nuevo usuario
+          {t("usuarios.newBtn")}
         </button>
       </div>
 
@@ -439,7 +443,7 @@ export default function UsuariosPage() {
               border:     vista === v ? "1px solid rgba(102,126,234,0.4)" : "1px solid transparent",
             }}
           >
-            {v === "lista" ? "Lista" : "Por área"}
+            {v === "lista" ? t("common.tabList") : t("common.tabByArea")}
           </button>
         ))}
       </div>
@@ -448,7 +452,7 @@ export default function UsuariosPage() {
       <div className="flex gap-3 items-center flex-wrap">
         <input
           className="input-dark text-sm flex-1 min-w-[200px] max-w-xs"
-          placeholder={vista === "areas" ? "Buscar por nombre, email o área…" : "Buscar por nombre o email…"}
+          placeholder={vista === "areas" ? t("common.searchByNameEmailArea") : t("common.searchByNameEmail")}
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
         />
@@ -466,7 +470,7 @@ export default function UsuariosPage() {
         ))}
       </div>
 
-      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>Cargando…</p>}
+      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>{t("common.loading")}</p>}
       {error   && (
         <div className="px-4 py-3 rounded-lg text-sm"
              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
@@ -484,7 +488,7 @@ export default function UsuariosPage() {
           )}
           {filtrados.length === 0 && (
             <p className="text-sm text-center py-8" style={{ color: "rgba(255,255,255,0.3)" }}>
-              No se encontraron usuarios{busqueda ? ` para "${busqueda}"` : ""}.
+              {filtrados.length === 0 ? t("usuarios.noResultsFilter") : ""}
             </p>
           )}
         </div>
@@ -496,11 +500,11 @@ export default function UsuariosPage() {
              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
           <div className="grid grid-cols-[1fr_auto_1fr_auto_auto] gap-4 px-5 py-3 text-xs font-semibold uppercase tracking-wider"
                style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.35)" }}>
-            <span>Usuario</span>
-            <span className="text-center">Rol</span>
-            <span>Empresa</span>
-            <span className="text-center">Estado</span>
-            <span className="text-right">Acciones</span>
+            <span>{t("usuarios.colUser")}</span>
+            <span className="text-center">{t("usuarios.colRol")}</span>
+            <span>{t("usuarios.colEmpresa")}</span>
+            <span className="text-center">{t("common.colStatus")}</span>
+            <span className="text-right">{t("common.colActions")}</span>
           </div>
 
           {filtrados.map((u) => (
@@ -522,7 +526,7 @@ export default function UsuariosPage() {
               </span>
 
               <p className="text-sm truncate" style={{ color: u.empresa_nombre ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.25)" }}>
-                {u.empresa_nombre ?? "— Sin empresa —"}
+                {u.empresa_nombre ?? t("common.noCompany")}
               </p>
 
               <button onClick={() => toggleActivo(u)}
@@ -532,7 +536,7 @@ export default function UsuariosPage() {
                         border:     u.activo ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(239,68,68,0.3)",
                         color:      u.activo ? "#34d399" : "#f87171",
                       }}>
-                {u.activo ? "Activo" : "Inactivo"}
+                {u.activo ? t("common.statusActive") : t("common.statusInactive")}
               </button>
 
               <div className="flex items-center gap-2 justify-end">
@@ -566,14 +570,14 @@ export default function UsuariosPage() {
         <div className="text-center py-16 rounded-xl"
              style={{ background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)" }}>
           <p className="text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
-            {busqueda || filtroRol !== "todos" ? "Sin resultados para los filtros aplicados." : "Sin usuarios registrados aún."}
+            {busqueda || filtroRol !== "todos" ? t("common.noResultsFiltered") : t("usuarios.emptyMsg")}
           </p>
         </div>
       )}
 
       {/* Modal crear/editar */}
       {modal && modal !== "crear" && (
-        <Modal title={`Editar — ${modal.nombre}`} onClose={() => setModal(null)}>
+        <Modal title={`${t("usuarios.modalCreate")} — ${modal.nombre}`} onClose={() => setModal(null)}>
           <UsuarioForm inicial={modal} empresas={empresas}
                        onSave={(d) => handleSave(d, modal)}
                        onCancel={() => setModal(null)}
@@ -581,7 +585,7 @@ export default function UsuariosPage() {
         </Modal>
       )}
       {modal === "crear" && (
-        <Modal title="Nuevo usuario" onClose={() => setModal(null)}>
+        <Modal title={t("usuarios.modalCreate")} onClose={() => setModal(null)}>
           <UsuarioForm empresas={empresas}
                        onSave={(d) => handleSave(d)}
                        onCancel={() => setModal(null)}
@@ -591,21 +595,21 @@ export default function UsuariosPage() {
 
       {/* Confirmar eliminar */}
       {confirmDelete && (
-        <Modal title="Eliminar usuario" onClose={() => setConfirmDelete(null)}>
+        <Modal title={t("usuarios.modalDelete")} onClose={() => setConfirmDelete(null)}>
           <div className="space-y-4">
             <p className="text-sm" style={{ color: "rgba(255,255,255,0.65)" }}>
-              ¿Eliminar a <span className="font-semibold text-white">{confirmDelete.nombre}</span>? Esta acción no se puede deshacer.
+              {t("usuarios.confirmDelete")} <span className="font-semibold text-white">{confirmDelete.nombre}</span>{t("usuarios.confirmDeleteEnd")} {t("common.cannotUndo")}
             </p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmDelete(null)}
                       className="flex-1 py-2.5 rounded-xl text-sm font-medium"
                       style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)" }}>
-                Cancelar
+                {t("common.cancel")}
               </button>
               <button onClick={() => handleDelete(confirmDelete)} disabled={saving}
                       className="flex-1 py-2.5 rounded-xl text-sm font-bold"
                       style={{ background: "rgba(239,68,68,0.8)", color: "#fff", opacity: saving ? 0.6 : 1 }}>
-                {saving ? "Eliminando…" : "Eliminar"}
+                {saving ? t("common.deleting") : t("common.delete")}
               </button>
             </div>
           </div>
