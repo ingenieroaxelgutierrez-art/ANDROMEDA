@@ -85,7 +85,7 @@ export default function AdminMetricasPage() {
             <div className="rounded-xl p-6"
                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
               <h3 className="text-sm font-semibold mb-5" style={{ color: "rgba(255,255,255,0.6)" }}>
-                Consultas por tipo
+                {t("admin.queriesByType")}
               </h3>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={porTipoData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -111,7 +111,7 @@ export default function AdminMetricasPage() {
                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
             <div className="px-5 py-3 text-xs font-semibold uppercase tracking-wider"
                  style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.35)" }}>
-              Detalle por tipo de consulta
+              {t("admin.queriesDetail")}
             </div>
             {porTipoData.map(({ tipo, consultas }, i) => {
               const total = porTipoData.reduce((a, b) => a + b.consultas, 0);

@@ -4,8 +4,10 @@ import { useState, useRef, useEffect, FormEvent } from "react";
 import Image from "next/image";
 import { enviarMensaje, getMe, ApiError, MensajeChat } from "@/lib/api";
 import ChatBubble from "@/components/ChatBubble";
+import { useI18n } from "@/components/I18nProvider";
 
 export default function AdminChatPage() {
+  const { t } = useI18n();
   const [sessionId] = useState(() => crypto.randomUUID());
   const [empresaId, setEmpresaId]   = useState<string | null>(null);
   const [nombreAdmin, setNombreAdmin] = useState<string>("");
@@ -43,7 +45,7 @@ export default function AdminChatPage() {
       const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined);
       setMensajes(resp.historial);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Error al enviar el mensaje.");
+      setError(err instanceof ApiError ? err.message : t("chat.errorSend"));
       setMensajes((prev) => prev.slice(0, -1));
     } finally {
       setLoading(false);
@@ -59,7 +61,7 @@ export default function AdminChatPage() {
           <Image src="/logo.png" alt="ANDROMEDA" width={36} height={36} className="w-full h-full object-cover" />
         </div>
         <div>
-          <h2 className="text-lg font-bold text-white leading-tight">Chat con ANDROMEDA</h2>
+          <h2 className="text-lg font-bold text-white leading-tight">{t("chat.title")}</h2>
           <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
                 style={{
                   background: "rgba(239,68,68,0.15)",
@@ -82,9 +84,9 @@ export default function AdminChatPage() {
               <Image src="/logo.png" alt="ANDROMEDA" width={64} height={64} className="w-full h-full object-cover" />
             </div>
             <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
-              Modo admin — puedes consultar cualquier empresa o el sistema global.
+              {t("admin.chatAdminMode")}
               <br />
-              <em style={{ color: "rgba(255,255,255,0.5)" }}>«¿Cuántas ventas se hicieron este mes?»</em>
+              <em style={{ color: "rgba(255,255,255,0.5)" }}>{t("admin.chatAdminExample")}</em>
             </p>
           </div>
         ) : (
@@ -122,7 +124,7 @@ export default function AdminChatPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={loading}
-          placeholder="Escribe tu consulta aquí…"
+          placeholder={t("chat.placeholder")}
           className="input-dark flex-1"
         />
         <button
@@ -134,7 +136,7 @@ export default function AdminChatPage() {
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
-          Enviar
+          {t("chat.send")}
         </button>
       </form>
     </div>

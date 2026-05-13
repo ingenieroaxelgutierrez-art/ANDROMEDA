@@ -126,10 +126,14 @@ const T: Record<string, any> = {
     loadError:        { es: "Error al cargar dashboard.",            en: "Error loading dashboard.",          ja: "ダッシュボードの読み込みエラー。" },
     metricsError:     { es: "Error al cargar métricas.",             en: "Error loading metrics.",            ja: "メトリクスの読み込みエラー。" },
     queriesByType:    { es: "Consultas por tipo",                    en: "Queries by type",                   ja: "種類別クエリ" },
+    queriesDetail:    { es: "Detalle por tipo de consulta",          en: "Detail by query type",              ja: "クエリ種別詳細" },
     queriesLabel:     { es: "Consultas",                             en: "Queries",                           ja: "クエリ" },
     activeCompaniesCard: { es: "Empresas activas", en: "Active companies", ja: "アクティブ企業" },
     avgDuration:      { es: "Duración promedio",                     en: "Average duration",                  ja: "平均処理時間" },
     successRate:      { es: "Tasa de éxito",                         en: "Success rate",                      ja: "成功率" },
+    quickAccess:      { es: "Acceso rápido",                         en: "Quick access",                      ja: "クイックアクセス" },
+    chatAdminMode:    { es: "Modo admin — puedes consultar cualquier empresa o el sistema global.", en: "Admin mode — you can query any company or the global system.", ja: "管理者モード — 任意の企業またはグローバルシステムに問い合わせできます。" },
+    chatAdminExample: { es: "«¿Cuántas ventas se hicieron este mes?»", en: "«How many sales were made this month?»", ja: "«今月の売上は何件ですか？»" },
   },
 
   agente: {

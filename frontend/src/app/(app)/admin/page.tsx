@@ -27,48 +27,48 @@ export default function AdminDashboardPage() {
 
   const cards = [
     {
-      label: "Empresas totales",
+      label: t("admin.totalCompanies"),
       value: dash?.empresas_total ?? "—",
-      sub: `${dash?.empresas_activas ?? 0} activas`,
+      sub: `${dash?.empresas_activas ?? 0} ${t("admin.activeCompanies")}`,
       color: "text-andromeda-400",
     },
     {
-      label: "Usuarios registrados",
+      label: t("admin.totalUsers"),
       value: dash?.usuarios_total ?? "—",
-      sub: `${dash?.usuarios_activos ?? 0} activos hoy`,
+      sub: `${dash?.usuarios_activos ?? 0} ${t("admin.activeUsers")}`,
       color: "text-emerald-400",
     },
     {
-      label: "Consultas hoy",
+      label: t("admin.queriesToday"),
       value: dash?.consultas_hoy ?? metricas?.total_consultas ?? "—",
-      sub: `${dash?.consultas_mes ?? 0} este mes`,
+      sub: `${dash?.consultas_mes ?? 0} ${t("admin.queriesMonth")}`,
       color: "text-sky-400",
     },
     {
-      label: "Tasa de error",
+      label: t("admin.errorRate"),
       value: dash ? `${(dash.tasa_error).toFixed(2)}%` : (metricas ? `${(metricas.tasa_error).toFixed(2)}%` : "—"),
-      sub: "Últimas 24 h",
+      sub: t("admin.errorRateSub"),
       color: "text-rose-400",
     },
     {
-      label: "Uptime sistema",
+      label: t("admin.uptime"),
       value: dash ? `${dash.uptime_pct.toFixed(1)}%` : "—",
-      sub: "Últimos 30 días",
+      sub: t("admin.uptimeSub"),
       color: "text-violet-400",
     },
     {
-      label: "Resp. promedio",
+      label: t("admin.avgResponse"),
       value: metricas ? `${metricas.duracion_promedio_ms.toFixed(0)} ms` : "—",
-      sub: "Tiempo de respuesta",
+      sub: t("admin.avgResponseSub"),
       color: "text-amber-400",
     },
   ];
 
   const accesos = [
-    { href: "/admin/empresas",      label: "Gestionar empresas",    desc: "Alta, edición y configuración Odoo",   color: "#667eea" },
-    { href: "/admin/usuarios",      label: "Gestionar usuarios",    desc: "Roles, permisos y accesos",            color: "#764ba2" },
-    { href: "/admin/metricas",      label: "Ver métricas",          desc: "Consultas, errores y rendimiento",     color: "#10b981" },
-    { href: "/admin/configuracion", label: "Configuración sistema",  desc: "LLM, modelos y parámetros globales",  color: "#f64f59" },
+    { href: "/admin/empresas",      label: t("admin.manageCompanies"), desc: t("admin.manageCompDesc"),    color: "#667eea" },
+    { href: "/admin/usuarios",      label: t("admin.manageUsers"),     desc: t("admin.manageUsersDesc"),  color: "#764ba2" },
+    { href: "/admin/metricas",      label: t("admin.viewMetrics"),     desc: t("admin.viewMetricsDesc"),  color: "#10b981" },
+    { href: "/admin/configuracion", label: t("admin.systemConfig"),    desc: t("admin.systemConfigDesc"), color: "#f64f59" },
   ];
 
   return (
@@ -101,7 +101,7 @@ export default function AdminDashboardPage() {
       {/* Accesos rápidos */}
       <div>
         <h3 className="text-sm font-semibold mb-4 uppercase tracking-widest"
-            style={{ color: "rgba(255,255,255,0.35)" }}>Acceso rápido</h3>
+            style={{ color: "rgba(255,255,255,0.35)" }}>{t("admin.quickAccess")}</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {accesos.map(({ href, label, desc, color }) => (
             <Link
@@ -142,7 +142,7 @@ export default function AdminDashboardPage() {
       {metricas && Object.keys(metricas.por_tipo).length > 0 && (
         <div>
           <h3 className="text-sm font-semibold mb-4 uppercase tracking-widest"
-              style={{ color: "rgba(255,255,255,0.35)" }}>Consultas por tipo</h3>
+              style={{ color: "rgba(255,255,255,0.35)" }}>{t("admin.queriesByType")}</h3>
           <div className="rounded-xl overflow-hidden"
                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
             {Object.entries(metricas.por_tipo).map(([tipo, count], i) => {
