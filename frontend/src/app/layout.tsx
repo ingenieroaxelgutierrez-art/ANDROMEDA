@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import I18nProvider from "@/components/I18nProvider";
 
 export const metadata: Metadata = {
   title: "ANDROMEDA",
@@ -14,7 +15,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className="min-h-screen relative">{children}</body>
+      <body className="min-h-screen relative">
+        <I18nProvider>{children}</I18nProvider>
+      </body>
     </html>
   );
 }

@@ -6,8 +6,10 @@ import {
 } from "recharts";
 import { getMetricas, ApiError, MetricasAdmin } from "@/lib/api";
 import MetricsCard from "@/components/MetricsCard";
+import { useI18n } from "@/components/I18nProvider";
 
 export default function AdminMetricasPage() {
+  const { t } = useI18n();
   const [metricas, setMetricas] = useState<MetricasAdmin | null>(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
@@ -16,7 +18,7 @@ export default function AdminMetricasPage() {
     setLoading(true);
     getMetricas()
       .then(setMetricas)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Error al cargar métricas."))
+      .catch((err) => setError(err instanceof ApiError ? err.message : t("admin.metricsError")))
       .finally(() => setLoading(false));
   }
 
@@ -30,9 +32,9 @@ export default function AdminMetricasPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-white tracking-tight">Métricas del sistema</h2>
+          <h2 className="text-2xl font-black text-white tracking-tight">{t("admin.metricsTitle")}</h2>
           <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-            Rendimiento global de todas las empresas
+            {t("admin.metricsSub")}
           </p>
         </div>
         <button onClick={cargar}
@@ -42,11 +44,11 @@ export default function AdminMetricasPage() {
             <path strokeLinecap="round" strokeLinejoin="round"
                   d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          Actualizar
+          {t("admin.refresh")}
         </button>
       </div>
 
-      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>Cargando métricas…</p>}
+      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>{t("common.loading")}</p>}
       {error && (
         <div className="px-4 py-3 rounded-lg text-sm"
              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
@@ -58,21 +60,21 @@ export default function AdminMetricasPage() {
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <MetricsCard label="Total consultas"    value={metricas.total_consultas.toLocaleString()} />
-            <MetricsCard label="Consultas exitosas" value={metricas.consultas_ok.toLocaleString()}    colorClass="text-emerald-400" />
-            <MetricsCard label="Consultas con error" value={metricas.consultas_error.toLocaleString()} colorClass="text-rose-400" />
+            <MetricsCard label={t("admin.queriesLabel")}         value={metricas.total_consultas.toLocaleString()} />
+            <MetricsCard label={t("admin.successRate")}           value={metricas.consultas_ok.toLocaleString()}    colorClass="text-emerald-400" />
+            <MetricsCard label={t("common.error")}               value={metricas.consultas_error.toLocaleString()} colorClass="text-rose-400" />
             <MetricsCard
-              label="Tasa de error"
+              label={t("admin.errorRate")}
               value={`${(metricas.tasa_error).toFixed(2)}%`}
               colorClass={metricas.tasa_error > 0.05 ? "text-rose-400" : "text-emerald-400"}
             />
             <MetricsCard
-              label="Resp. promedio"
+              label={t("admin.avgDuration")}
               value={`${metricas.duracion_promedio_ms.toFixed(0)} ms`}
               colorClass="text-sky-400"
             />
             <MetricsCard
-              label="Empresas activas"
+              label={t("admin.activeCompaniesCard")}
               value={metricas.empresas_activas.toLocaleString()}
               colorClass="text-andromeda-400"
             />

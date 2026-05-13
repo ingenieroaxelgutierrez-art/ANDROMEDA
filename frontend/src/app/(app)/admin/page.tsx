@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getDashboard, getMetricas, ApiError, DashboardAdmin, MetricasAdmin } from "@/lib/api";
 import MetricsCard from "@/components/MetricsCard";
+import { useI18n } from "@/components/I18nProvider";
 
 export default function AdminDashboardPage() {
+  const { t } = useI18n();
   const [dash, setDash]       = useState<DashboardAdmin | null>(null);
   const [metricas, setMetricas] = useState<MetricasAdmin | null>(null);
   const [loading, setLoading] = useState(true);
@@ -19,7 +21,7 @@ export default function AdminDashboardPage() {
       setDash(d);
       setMetricas(m);
     }).catch((err) => {
-      setError(err instanceof ApiError ? err.message : "Error al cargar dashboard.");
+      setError(err instanceof ApiError ? err.message : t("admin.loadError"));
     }).finally(() => setLoading(false));
   }, []);
 
@@ -73,14 +75,14 @@ export default function AdminDashboardPage() {
     <div className="space-y-8">
       {/* Encabezado */}
       <div>
-        <h2 className="text-2xl font-black text-white tracking-tight">Panel de administración</h2>
+        <h2 className="text-2xl font-black text-white tracking-tight">{t("admin.dashTitle")}</h2>
         <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-          Vista global de toda la plataforma ANDROMEDA SaaS
+          {t("admin.dashSub")}
         </p>
       </div>
 
       {loading && (
-        <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>Cargando dashboard…</p>
+        <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>{t("common.loading")}</p>
       )}
       {error && (
         <div className="px-4 py-3 rounded-lg text-sm"

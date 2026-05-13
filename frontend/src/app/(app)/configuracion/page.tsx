@@ -2,6 +2,7 @@
 
 import { useEffect, useState, FormEvent } from "react";
 import { getMe, actualizarPerfil, ApiError, UsuarioActual } from "@/lib/api";
+import { useI18n } from "@/components/I18nProvider";
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -17,6 +18,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 const ROL_LABELS: Record<string, string> = { admin: "Administrador", agente: "Profesional", usuario: "Usuario" };
 
 export default function ConfiguracionPage() {
+  const { t } = useI18n();
   const [me, setMe]           = useState<UsuarioActual | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
@@ -37,14 +39,14 @@ export default function ConfiguracionPage() {
         setNombre(u.nombre);
         setEmail(u.email);
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Error al cargar perfil."))
+      .catch((err) => setError(err instanceof ApiError ? err.message : t("config.errorLoad")))
       .finally(() => setLoading(false));
   }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (passwordNueva && passwordNueva !== passwordConfirm) {
-      setError("Las contraseñas nuevas no coinciden.");
+      setError(t("config.pwMismatch"));
       return;
     }
     setSaving(true);
@@ -66,7 +68,7 @@ export default function ConfiguracionPage() {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Error al guardar.");
+      setError(err instanceof ApiError ? err.message : t("config.errorLoad"));
     } finally {
       setSaving(false);
     }
@@ -75,13 +77,13 @@ export default function ConfiguracionPage() {
   return (
     <div className="space-y-6 max-w-lg">
       <div>
-        <h2 className="text-2xl font-black text-white tracking-tight">Mi perfil</h2>
+        <h2 className="text-2xl font-black text-white tracking-tight">{t("config.title")}</h2>
         <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-          Datos personales y seguridad de tu cuenta
+          {t("config.subtitle")}
         </p>
       </div>
 
-      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>Cargando…</p>}
+      {loading && <p className="text-sm animate-pulse" style={{ color: "rgba(255,255,255,0.4)" }}>{t("common.loading")}</p>}
       {error && (
         <div className="px-4 py-3 rounded-lg text-sm"
              style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
@@ -91,7 +93,7 @@ export default function ConfiguracionPage() {
       {success && (
         <div className="px-4 py-3 rounded-lg text-sm"
              style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "#34d399" }}>
-          Perfil actualizado correctamente.
+          {t("config.success")}
         </div>
       )}
 
@@ -119,12 +121,12 @@ export default function ConfiguracionPage() {
                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
               <h3 className="text-sm font-bold text-white">Información personal</h3>
 
-              <Field label="Nombre completo">
+              <Field label={t("config.nameLabel")}>
                 <input className="input-dark w-full text-sm" value={nombre}
                        onChange={(e) => setNombre(e.target.value)} required placeholder="Tu nombre" />
               </Field>
 
-              <Field label="Correo electrónico">
+              <Field label={t("config.emailLabel")} hint={t("config.emailHint")}>
                 <input className="input-dark w-full text-sm" type="email" value={email}
                        onChange={(e) => setEmail(e.target.value)} required placeholder="tu@email.com" />
               </Field>
@@ -132,22 +134,22 @@ export default function ConfiguracionPage() {
 
             <section className="rounded-xl p-6 space-y-4"
                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-              <h3 className="text-sm font-bold text-white">Cambiar contraseña</h3>
+              <h3 className="text-sm font-bold text-white">{t("config.securityTitle")}</h3>
               <p className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
-                Déjalo en blanco si no deseas cambiar tu contraseña.
+                {t("config.pwHint")}
               </p>
 
-              <Field label="Contraseña actual">
+              <Field label={t("config.currentPw")}>
                 <input className="input-dark w-full text-sm" type="password" value={passwordActual}
                        onChange={(e) => setPasswordActual(e.target.value)} placeholder="••••••••" />
               </Field>
 
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Nueva contraseña">
+                <Field label={t("config.newPw")}>
                   <input className="input-dark w-full text-sm" type="password" value={passwordNueva}
                          onChange={(e) => setPasswordNueva(e.target.value)} placeholder="••••••••" />
                 </Field>
-                <Field label="Confirmar contraseña">
+                <Field label={t("config.confirmPw")}>
                   <input className="input-dark w-full text-sm" type="password" value={passwordConfirm}
                          onChange={(e) => setPasswordConfirm(e.target.value)} placeholder="••••••••" />
                 </Field>
@@ -161,7 +163,7 @@ export default function ConfiguracionPage() {
                       color: "#fff",
                       opacity: saving ? 0.6 : 1,
                     }}>
-              {saving ? "Guardando…" : "Guardar cambios"}
+              {saving ? t("config.saving") : t("config.save")}
             </button>
           </form>
         </>

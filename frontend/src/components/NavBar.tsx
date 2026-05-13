@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { logout } from "@/lib/api";
 import { getRol, getSubRol } from "@/lib/auth";
+import { useI18n } from "@/components/I18nProvider";
+import LanguageSelector from "@/components/LanguageSelector";
 
 interface NavLink {
   href: string;
@@ -59,49 +61,50 @@ const IcoPerfil = (
   </svg>
 );
 
-// ── Links por rol ─────────────────────────────────────────────────────────────
+// ── Factories de links (reciben t para etiquetas traducidas) ─────────────────
 
-const LINKS_ADMIN: NavLink[] = [
-  { href: "/admin",               label: "Dashboard",     icon: IcoDashboard },
-  { href: "/admin/chat",          label: "Chat",          icon: IcoChat      },
-  { href: "/admin/empresas",      label: "Empresas",      icon: IcoEmpresas  },
-  { href: "/admin/usuarios",      label: "Usuarios",      icon: IcoUsuarios  },
-  { href: "/admin/metricas",      label: "Métricas",      icon: IcoMetricas  },
-  { href: "/admin/configuracion", label: "Configuración", icon: IcoConfig    },
-];
-const LINKS_AGENTE: NavLink[] = [
-  { href: "/agente/chat",          label: "Chat",       icon: IcoChat     },
-  { href: "/agente/metricas",      label: "Métricas",   icon: IcoMetricas },
-  { href: "/agente/configuracion", label: "Mi empresa", icon: IcoConfig   },
-];
-const LINKS_USUARIO: NavLink[] = [
-  { href: "/chat",          label: "Chat",      icon: IcoChat   },
-  { href: "/configuracion", label: "Mi perfil", icon: IcoPerfil },
-];
+type TFn = (key: string) => string;
 
-// Links por sub_rol — cada sub_rol tiene su ruta base y menú propio
-const LINKS_SUB_ROL: Record<string, NavLink[]> = {
-  director:    [
-    { href: "/director/chat",    label: "Chat",     icon: IcoChat     },
-    { href: "/admin/metricas",   label: "Métricas", icon: IcoMetricas },
-  ],
-  gerente:     [
-    { href: "/gerente/chat",     label: "Chat",     icon: IcoChat     },
-    { href: "/admin/metricas",   label: "Métricas", icon: IcoMetricas },
-  ],
-  jefe:        [
-    { href: "/jefe/chat",        label: "Chat",     icon: IcoChat     },
-  ],
-  coordinador: [
-    { href: "/coordinador/chat", label: "Chat",     icon: IcoChat     },
-  ],
-  auxiliar:    [
-    { href: "/auxiliar/chat",    label: "Chat",     icon: IcoChat     },
-  ],
-  tienda:      [
-    { href: "/tienda/chat",      label: "Chat",     icon: IcoChat     },
-  ],
-};
+function buildLinksAdmin(t: TFn): NavLink[] {
+  return [
+    { href: "/admin",               label: t("nav.dashboard"),     icon: IcoDashboard },
+    { href: "/admin/chat",          label: t("nav.chat"),          icon: IcoChat      },
+    { href: "/admin/empresas",      label: t("nav.companies"),     icon: IcoEmpresas  },
+    { href: "/admin/usuarios",      label: t("nav.users"),         icon: IcoUsuarios  },
+    { href: "/admin/metricas",      label: t("nav.metrics"),       icon: IcoMetricas  },
+    { href: "/admin/configuracion", label: t("nav.configuration"), icon: IcoConfig    },
+  ];
+}
+function buildLinksAgente(t: TFn): NavLink[] {
+  return [
+    { href: "/agente/chat",          label: t("nav.chat"),      icon: IcoChat     },
+    { href: "/agente/metricas",      label: t("nav.metrics"),   icon: IcoMetricas },
+    { href: "/agente/configuracion", label: t("nav.myCompany"), icon: IcoConfig   },
+  ];
+}
+function buildLinksUsuario(t: TFn): NavLink[] {
+  return [
+    { href: "/chat",          label: t("nav.chat"),      icon: IcoChat   },
+    { href: "/configuracion", label: t("nav.myProfile"), icon: IcoPerfil },
+  ];
+}
+function buildLinksSubRol(subRol: string, t: TFn): NavLink[] | null {
+  const map: Record<string, NavLink[]> = {
+    director:    [
+      { href: "/director/chat",    label: t("nav.chat"),    icon: IcoChat     },
+      { href: "/admin/metricas",   label: t("nav.metrics"), icon: IcoMetricas },
+    ],
+    gerente:     [
+      { href: "/gerente/chat",     label: t("nav.chat"),    icon: IcoChat     },
+      { href: "/admin/metricas",   label: t("nav.metrics"), icon: IcoMetricas },
+    ],
+    jefe:        [{ href: "/jefe/chat",        label: t("nav.chat"), icon: IcoChat }],
+    coordinador: [{ href: "/coordinador/chat", label: t("nav.chat"), icon: IcoChat }],
+    auxiliar:    [{ href: "/auxiliar/chat",    label: t("nav.chat"), icon: IcoChat }],
+    tienda:      [{ href: "/tienda/chat",      label: t("nav.chat"), icon: IcoChat }],
+  };
+  return map[subRol] ?? null;
+}
 
 const SUB_ROL_LABEL: Record<string, string> = {
   admin:       "Admin",
@@ -129,8 +132,9 @@ const ROL_COLOR: Record<string, string> = {
 export default function NavBar() {
   const router   = useRouter();
   const pathname = usePathname();
-  const [links, setLinks]           = useState<NavLink[]>(LINKS_USUARIO);
+  const { t }    = useI18n();
   const [rol, setRol]               = useState<string>("usuario");
+  const [subRolState, setSubRolState] = useState<string>("");
   const [displayLabel, setDisplayLabel] = useState<string>("Usuario");
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -138,23 +142,19 @@ export default function NavBar() {
     const r      = getRol()    ?? "usuario";
     const subRol = getSubRol() ?? "";
     setRol(r);
-
+    setSubRolState(subRol);
     // Etiqueta visual: sub_rol tiene prioridad sobre rol principal
-    setDisplayLabel(
-      SUB_ROL_LABEL[subRol] ?? ROL_LABEL[r] ?? r
-    );
-
-    // Links: sub_rol tiene prioridad sobre rol principal
-    if (subRol && LINKS_SUB_ROL[subRol]) {
-      setLinks(LINKS_SUB_ROL[subRol]);
-    } else if (r === "admin") {
-      setLinks(LINKS_ADMIN);
-    } else if (r === "agente") {
-      setLinks(LINKS_AGENTE);
-    } else {
-      setLinks(LINKS_USUARIO);
-    }
+    setDisplayLabel(SUB_ROL_LABEL[subRol] ?? ROL_LABEL[r] ?? r);
   }, []);
+
+  // Links reactivos al locale
+  const links: NavLink[] = (() => {
+    const subLinks = buildLinksSubRol(subRolState, t as TFn);
+    if (subLinks) return subLinks;
+    if (rol === "admin")   return buildLinksAdmin(t as TFn);
+    if (rol === "agente")  return buildLinksAgente(t as TFn);
+    return buildLinksUsuario(t as TFn);
+  })();
 
   // Cerrar drawer al cambiar de ruta
   useEffect(() => {
@@ -254,7 +254,7 @@ export default function NavBar() {
         {/* Nav links */}
         <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
           <p className="px-3 pb-2 text-xs font-semibold tracking-widest uppercase"
-             style={{ color: "rgba(255,255,255,0.3)" }}>Menú</p>
+             style={{ color: "rgba(255,255,255,0.3)" }}>{t("nav.menu")}</p>
 
           {links.map(({ href, label, icon }) => {
             const active = pathname === href || (href.length > 1 && pathname.startsWith(href));
@@ -280,8 +280,9 @@ export default function NavBar() {
           })}
         </nav>
 
-        {/* Footer — logout */}
+        {/* Footer — language selector + logout */}
         <div className="px-3 pb-6 border-t pt-4" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          <LanguageSelector />
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200"
@@ -299,7 +300,7 @@ export default function NavBar() {
               <path strokeLinecap="round" strokeLinejoin="round"
                     d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
-            Cerrar sesión
+            {t("nav.logout")}
           </button>
         </div>
       </aside>
