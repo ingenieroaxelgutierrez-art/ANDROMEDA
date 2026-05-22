@@ -52,7 +52,7 @@ async def procesar_chat(
     # ── Sprint 3: Resolver área del usuario para filtrado en ConectorOdoo ─────
     # Si el usuario tiene area_id y sub_rol, buscamos el código del área en BD
     # para poder filtrar en Odoo (el JWT guarda el UUID, Odoo necesita el código).
-    from models.conector_odoo import _ctx_usuario_filtro
+    from models.conector_odoo import _ctx_usuario_filtro, _ctx_idioma
     _area_codigo: str | None = None
     _area_tipo: str | None = None
     _area_id: str | None = ctx.get("area_id")
@@ -71,6 +71,7 @@ async def procesar_chat(
     # IMPORTANTE: set() debe llamarse ANTES de copy_context() para que el
     # snapshot incluya el nuevo valor del ContextVar.
     _token_filtro = _ctx_usuario_filtro.set(_contexto_filtro)
+    _token_idioma = _ctx_idioma.set(idioma)
     _ctx_copy = contextvars.copy_context()
 
     # ── Restaurar contexto de sesión desde BD si el cliente no lo envió ──────
@@ -99,6 +100,7 @@ async def procesar_chat(
         ) from exc
     finally:
         _ctx_usuario_filtro.reset(_token_filtro)
+        _ctx_idioma.reset(_token_idioma)
 
     duracion_ms = int((time.perf_counter() - t_inicio) * 1000)
 
@@ -108,6 +110,41 @@ async def procesar_chat(
         if entry.get("role") == "assistant":
             respuesta = str(entry.get("content", ""))
             break
+
+    # ── Limpiar marcador interno del formateador (nunca debe ser visible) ─────
+    _MARCADOR_INTERNO = '__conclusiones_ok__'
+    _MARCADOR_HTML = '<!-- conclusiones-aplicadas -->'
+    respuesta = (
+        respuesta
+        .replace(_MARCADOR_INTERNO + '\n', '')
+        .replace(_MARCADOR_INTERNO, '')
+        .replace(_MARCADOR_HTML + '\n', '')
+        .replace(_MARCADOR_HTML, '')
+    )
+    for entry in historial_actualizado:
+        if entry.get("role") == "assistant":
+            entry["content"] = (
+                str(entry.get("content", ""))
+                .replace(_MARCADOR_INTERNO + '\n', '')
+                .replace(_MARCADOR_INTERNO, '')
+                .replace(_MARCADOR_HTML + '\n', '')
+                .replace(_MARCADOR_HTML, '')
+            )
+
+    # ── Traducir respuesta al idioma del cliente (si no es español) ───────────
+    # La traducción se hace DESPUÉS de limpiar el marcador y ANTES del validador,
+    # para que la validación opere sobre el texto final visible al usuario.
+    if idioma != "es" and respuesta:
+        try:
+            respuesta_traducida = _traducir_respuesta_datos(bot, respuesta, idioma)
+            if respuesta_traducida and respuesta_traducida != respuesta:
+                respuesta = respuesta_traducida
+                for entry in reversed(historial_actualizado):
+                    if entry.get("role") == "assistant":
+                        entry["content"] = respuesta
+                        break
+        except Exception:
+            pass  # Fallback: mostrar respuesta en español
 
     # ── Validar respuesta antes de enviar al cliente (evita alucinaciones) ────
     try:
@@ -268,4 +305,58 @@ def _resolver_area_desde_bd(area_id: str) -> tuple[str | None, str | None]:
     except Exception:
         pass
     return None, None
+
+
+def _traducir_respuesta_datos(bot, texto: str, idioma: str) -> str:
+    """Traduce al idioma objetivo las etiquetas de respuestas de datos usando el LLM.
+
+    Solo se llama cuando idioma != 'es'. Usa el LLM ya instanciado en el bot
+    con temperatura=0 para máxima fidelidad. Si el LLM no está disponible o
+    falla, retorna el texto original (fallback silencioso).
+
+    CRÍTICO: el system_prompt instruye al LLM a preservar TODA la sintaxis
+    Markdown, emojis, números, nombres de productos/empresas y códigos.
+    Solo traduce las etiquetas de interfaz (títulos de sección, encabezados
+    de tabla, mensajes descriptivos).
+    """
+    _LANGS = {"en": "English", "ja": "Japanese"}
+    lang = _LANGS.get(idioma)
+    if not lang:
+        return texto
+
+    agente = getattr(bot, 'agente_llm', None)
+    if not agente:
+        return texto
+    llm = getattr(agente, 'llm', None)
+    modelo = getattr(agente, 'modelo', None)
+    if not llm or not modelo or not getattr(llm, 'disponible', False):
+        return texto
+
+    system_prompt = (
+        f"You are a professional translator specializing in business analytics reports. "
+        f"Translate the following Markdown text from Spanish to {lang}. "
+        f"MANDATORY RULES — follow ALL without exception:\n"
+        f"1. Preserve ALL Markdown syntax (**, *, ##, ###, |, -, >, ~, `) character-for-character.\n"
+        f"2. Preserve ALL emojis exactly (🔴, 🟡, 🟢, 📊, 💡, 📎, 🏆, etc.).\n"
+        f"3. Preserve ALL numbers, percentages, and monetary values (e.g. $320,102.09, 15.3%) without any modification.\n"
+        f"4. Do NOT translate: product names, brand names, company names, person names, city names.\n"
+        f"5. Do NOT translate codes in brackets like [SKU-123] or similar identifiers.\n"
+        f"6. Do NOT add, remove, or reorder any table rows or columns.\n"
+        f"7. Translate ONLY: section titles (###), column headers in tables (|...|), "
+        f"descriptive labels, insight sentences, and call-to-action messages.\n"
+        f"8. Output ONLY the translated text — no preamble, no explanation, no wrapping."
+    )
+
+    resultado = llm.generar(
+        prompt=texto,
+        modelo=modelo,
+        system_prompt=system_prompt,
+        temperatura=0.0,
+        max_tokens=4096,
+    )
+    if resultado and getattr(resultado, 'exito', False):
+        contenido = getattr(resultado, 'contenido', '').strip()
+        if contenido:
+            return contenido
+    return texto
 

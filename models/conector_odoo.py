@@ -20,6 +20,12 @@ import pandas as pd
 # Se lee en ConectorOdoo.buscar() y buscar_leer() para enriquecer filtros.
 _ctx_usuario_filtro: ContextVar[dict] = ContextVar("_ctx_usuario_filtro", default={})
 
+# ── Idioma activo por request (i18n) ─────────────────────────────────────────
+# Código de idioma del cliente: "es", "en" o "ja".
+# Se establece en app/api/routers/chat.py antes de llamar al bot.
+# Lo leen los formateadores para generar labels en el idioma correcto.
+_ctx_idioma: ContextVar[str] = ContextVar("_ctx_idioma", default="es")
+
 # Sub-roles que tienen visión global (sin filtro de área)
 # Incluye los nuevos valores canónicos y los legados por compatibilidad
 _SUB_ROLES_SIN_FILTRO: frozenset = frozenset({
