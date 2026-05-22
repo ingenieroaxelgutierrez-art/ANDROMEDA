@@ -10,7 +10,7 @@ const AGENTE_SESSION_KEY = "andromeda_agente_session_id";
 const AGENTE_HISTORY_KEY = "andromeda_agente_history";
 
 export default function AgenteChatPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [sessionId] = useState<string>(() => {
     if (typeof window === "undefined") return crypto.randomUUID();
     const stored = sessionStorage.getItem(AGENTE_SESSION_KEY);
@@ -67,7 +67,7 @@ export default function AgenteChatPage() {
     setError(null);
 
     try {
-      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined);
+      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined, locale);
       setMensajes(resp.historial);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("chat.errorSend"));

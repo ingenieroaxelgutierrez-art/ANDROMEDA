@@ -1770,7 +1770,12 @@ class OdooAIProV5:
             if (ahora - ts).total_seconds() < 60
         ]
         if len(self._request_timestamps) >= self.MAX_REQUESTS_PER_MINUTE:
-            historial.append({"role": "assistant", "content": "⚠️ Demasiadas consultas por minuto. Por favor espera un momento antes de continuar."})
+            _rate_msgs = {
+                "es": "⚠️ Demasiadas consultas por minuto. Por favor espera un momento antes de continuar.",
+                "en": "⚠️ Too many requests per minute. Please wait a moment before continuing.",
+                "ja": "⚠️ リクエストが多すぎます。しばらくお待ちください。",
+            }
+            historial.append({"role": "assistant", "content": _rate_msgs.get(idioma, _rate_msgs["es"])})
             return historial, "", "⚠️ Rate limit"
         self._request_timestamps.append(ahora)
         
@@ -1801,7 +1806,7 @@ class OdooAIProV5:
         historial.append({"role": "user", "content": mensaje})
         
         # 1. Respuestas empáticas rápidas
-        resp_empatica, tipo_emp = self.motor_empatico.procesar_mensaje(mensaje)
+        resp_empatica, tipo_emp = self.motor_empatico.procesar_mensaje(mensaje, idioma=idioma)
         if tipo_emp in ['saludo', 'despedida']:
             historial.append({"role": "assistant", "content": resp_empatica})
 

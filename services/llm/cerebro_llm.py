@@ -286,11 +286,22 @@ No mezcles varias acciones: elige la más útil para avanzar la solicitud del us
         """Genera el prompt del sistema con contexto actual e idioma seleccionado."""
         _LANG_NAMES = {"es": "Spanish", "en": "English", "ja": "Japanese"}
         lang_name = _LANG_NAMES.get(idioma, "Spanish")
-        lang_rule = (
-            f"\n\n## RESPONSE LANGUAGE\nYou MUST respond exclusively in {lang_name}. "
-            f"Do not use any other language. All text, labels, explanations and summaries "
-            f"must be in {lang_name}."
-        ) if idioma != "es" else ""
+        if idioma == "es":
+            lang_rule = (
+                "\n\n## IDIOMA DE RESPUESTA\n"
+                "REGLA CRÍTICA: Responde SIEMPRE en español, sin importar el idioma en que "
+                "escriba el usuario. Todo el texto, etiquetas, explicaciones, encabezados de "
+                "tabla y resúmenes deben estar en español."
+            )
+        else:
+            lang_rule = (
+                f"\n\n## RESPONSE LANGUAGE\n"
+                f"CRITICAL RULE: You MUST respond exclusively in {lang_name}, "
+                f"regardless of the language the user writes in. "
+                f"Do NOT use any other language under any circumstances. "
+                f"Every word, label, explanation, table header, bullet point, and summary "
+                f"must be written in {lang_name}."
+            )
         prompt = self.SYSTEM_PROMPT.format(
             fecha_actual=datetime.now().strftime("%Y-%m-%d %H:%M")
         ) + lang_rule

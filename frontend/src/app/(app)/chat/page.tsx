@@ -10,7 +10,7 @@ const SESSION_KEY = "andromeda_chat_session_id";
 const HISTORY_KEY = "andromeda_chat_history";
 
 export default function ChatPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [sessionId] = useState<string>(() => {
     if (typeof window === "undefined") return crypto.randomUUID();
     const stored = sessionStorage.getItem(SESSION_KEY);
@@ -66,14 +66,14 @@ export default function ChatPage() {
     setError(null);
 
     try {
-      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined);
+      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined, locale);
       // El servidor retorna el historial completo; lo usamos directamente
       setMensajes(resp.historial);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("Error al enviar el mensaje.");
+        setError(t("chat.errorSend"));
       }
       // Revertir mensaje optimista en caso de error
       setMensajes((prev) => prev.slice(0, -1));

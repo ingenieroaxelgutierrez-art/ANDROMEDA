@@ -61,6 +61,34 @@ class MotorEmpatico:
             "¡Chao! No dudes en escribirme si tienes más dudas.",
             "¡Hasta pronto! Que tengas excelente día.",
         ]
+
+        # Saludos y despedidas en inglés
+        self._saludos_en = {
+            'morning':   ["Good morning! ☀️ How can I help you today?", "Hello! Good morning ☕ What can I assist you with?"],
+            'afternoon': ["Good afternoon! 🌤️ What do you need?", "Hi! Good afternoon. How can I help you?"],
+            'evening':   ["Good evening! 🌙 Working late?", "Good evening. What can I do for you?"],
+            'generic':   ["Hello! 👋 How are you? How can I help?", "Hi there! Glad you’re here. What do you need? 😊"],
+        }
+        self._despedidas_en = [
+            "Goodbye! 👋 It was a pleasure helping you.",
+            "See you! If you need anything else, I’ll be here.",
+            "Have a great day! 🌟 Good luck with your work.",
+            "Bye! Don’t hesitate to reach out if you have more questions.",
+        ]
+
+        # Saludos y despedidas en japonés
+        self._saludos_ja = {
+            'morning':   ["おはようございます！☀️ 今日はどのようにお手伝いできますか？", "おはようございます！☕ 何かお役に立てますか？"],
+            'afternoon': ["こんにちは！🌤️ 何が必要ですか？", "こんにちは！ どのようにお手伝いできますか？"],
+            'evening':   ["こんばんは！🌙 遅くまでお仕事ですか？", "こんばんは。何かお手伝いできることはありますか？"],
+            'generic':   ["こんにちは！👋 お元気ですか？何かお手伝いできますか？", "やあ！何かお手伝いできることはありますか？😊"],
+        }
+        self._despedidas_ja = [
+            "さようなら！👋 お役に立てて光栄でした。",
+            "またね！ 何か他にご不明な点があれば、またどうぞ。",
+            "良い一日を！🌟 お仕事頑張ってください。",
+            "またご質問があればいつでもどうぞ。",
+        ]
         
         # ========================================
         # RESPUESTAS EMPÁTICAS POR EMOCIÓN
@@ -303,23 +331,31 @@ class MotorEmpatico:
         
         return None
     
-    def generar_saludo(self) -> str:
-        """Genera un saludo apropiado según la hora."""
+    def generar_saludo(self, idioma: str = "es") -> str:
+        """Genera un saludo apropiado según la hora e idioma."""
         hora = datetime.now().hour
         
         if 5 <= hora < 12:
-            categoria = 'mañana'
+            categoria = 'morning' if idioma != 'es' else 'mañana'
         elif 12 <= hora < 19:
-            categoria = 'tarde'
+            categoria = 'afternoon' if idioma != 'es' else 'tarde'
         elif 19 <= hora < 24:
-            categoria = 'noche'
+            categoria = 'evening' if idioma != 'es' else 'noche'
         else:
-            categoria = 'generico'
-        
+            categoria = 'generic' if idioma != 'es' else 'generico'
+
+        if idioma == 'en':
+            return random.choice(self._saludos_en.get(categoria, self._saludos_en['generic']))
+        elif idioma == 'ja':
+            return random.choice(self._saludos_ja.get(categoria, self._saludos_ja['generic']))
         return random.choice(self.saludos[categoria])
     
-    def generar_despedida(self) -> str:
-        """Genera una despedida amigable."""
+    def generar_despedida(self, idioma: str = "es") -> str:
+        """Genera una despedida amigable según el idioma."""
+        if idioma == 'en':
+            return random.choice(self._despedidas_en)
+        elif idioma == 'ja':
+            return random.choice(self._despedidas_ja)
         return random.choice(self.despedidas)
     
     def responder_empaticamente(self, mensaje: str) -> Optional[str]:
@@ -376,7 +412,7 @@ class MotorEmpatico:
         
         return respuesta
     
-    def procesar_mensaje(self, mensaje: str) -> Tuple[Optional[str], str]:
+    def procesar_mensaje(self, mensaje: str, idioma: str = "es") -> Tuple[Optional[str], str]:
         """
         Procesa un mensaje y determina si requiere respuesta empática.
         
@@ -385,12 +421,16 @@ class MotorEmpatico:
             tipo_mensaje: 'emocional', 'casual', 'tecnico'
         """
         # Primero verificar si es despedida
-        if any(p in mensaje.lower() for p in ['chao', 'adiós', 'bye', 'hasta luego', 'me voy']):
-            return self.generar_despedida(), 'despedida'
+        _despedida_pats = ['chao', 'adiós', 'bye', 'hasta luego', 'me voy',
+                           'goodbye', 'see you', 'さようなら', 'またね', 'じゃあね']
+        if any(p in mensaje.lower() for p in _despedida_pats):
+            return self.generar_despedida(idioma=idioma), 'despedida'
         
         # Verificar si es saludo
-        if any(p in mensaje.lower() for p in ['hola', 'hey', 'buenos', 'buenas']):
-            return self.generar_saludo(), 'saludo'
+        _saludo_pats = ['hola', 'hey', 'buenos', 'buenas', 'hello', 'hi ', 'good morning',
+                        'good afternoon', 'good evening', 'こんにちは', 'おはよう', 'こんばんは', 'やあ']
+        if any(p in mensaje.lower() for p in _saludo_pats):
+            return self.generar_saludo(idioma=idioma), 'saludo'
         
         # Verificar emoción
         respuesta_emocional = self.responder_empaticamente(mensaje)
