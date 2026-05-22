@@ -19,6 +19,217 @@ from datetime import datetime
 from app.logging_config import get_logger
 logger = get_logger("services.knowledge.procesador_manuales")
 
+# ---------------------------------------------------------------------------
+# Diccionario de búsqueda multilingüe
+# Mapea términos JA / EN → palabras clave en ES para que buscar() encuentre
+# la sección correcta del manual aunque la consulta llegue en otro idioma.
+# ---------------------------------------------------------------------------
+_KW_JA: Dict[str, str] = {
+    # Facturación
+    "請求書": "factura facturas facturación",
+    "請求": "factura cobro facturación",
+    "スタンプ": "timbrar timbrado CFDI",
+    "スタンプ済み": "timbrado timbrar CFDI",
+    "電子請求": "factura electronica CFDI",
+    # Cancelación
+    "キャンセル": "cancelar anular cancelación",
+    "取り消し": "cancelar anular",
+    "無効": "cancelar anular invalidar",
+    # Ventas / POS
+    "売上": "ventas venta",
+    "販売": "ventas venta",
+    "販売時点": "punto de venta POS",
+    "レジ": "punto de venta caja POS",
+    "ポイントオブセール": "punto de venta POS",
+    # Inventario
+    "在庫": "inventario stock",
+    "在庫管理": "inventario gestión",
+    "倉庫": "almacén almacenes",
+    "入庫": "recepción entrada",
+    "出庫": "salida entrega",
+    "調整": "ajuste ajustes",
+    "転送": "transferir traspaso",
+    "カルデックス": "kardex inventario",
+    "棚卸し": "inventario cierre",
+    # Compras
+    "購入": "compra compras",
+    "発注": "orden de compra pedido",
+    "仕入先": "proveedor proveedores",
+    "受入": "recepción",
+    # Contabilidad
+    "会計": "contabilidad",
+    "支払い": "pago pagos",
+    "支払": "pago pagos",
+    "決済": "pago liquidación",
+    "残高": "saldo balance",
+    "銀行": "banco",
+    "バンク": "banco",
+    "振込": "transferencia bancaria",
+    "税": "impuesto impuestos",
+    "消費税": "impuesto IVA",
+    "クレジット": "crédito",
+    "デビット": "débito",
+    "勘定科目": "cuenta contable",
+    "仕訳": "asiento contable",
+    "元帳": "mayor contable",
+    # Clientes
+    "顧客": "cliente clientes",
+    "カスタマー": "cliente clientes",
+    # Pedidos / Órdenes
+    "注文": "pedido orden",
+    "オーダー": "pedido orden",
+    "配送": "entrega envío",
+    "配達": "entrega envío",
+    # Usuarios / Configuración
+    "ユーザー": "usuario usuarios",
+    "設定": "configuración ajuste",
+    "従業員": "empleado empleados",
+    "レポート": "reporte reportes",
+    "印刷": "imprimir impresión",
+    "検索": "buscar consultar",
+    "登録": "registrar registro",
+    "更新": "actualizar",
+    "作成": "crear creación",
+    "削除": "eliminar borrar",
+    "確認": "confirmar confirmación",
+    "返品": "devolución",
+    "払い戻し": "reembolso devolución",
+    "閉じる": "cerrar cierre",
+    "クローズ": "cierre cerrar",
+    "開く": "abrir apertura",
+    "月次": "mensual mes cierre de mes",
+    "月末": "cierre de mes fin de mes",
+    "締め": "cierre cierre de mes",
+    "製品": "producto productos",
+    "商品": "producto productos",
+    "価格": "precio precios",
+    "割引": "descuento",
+    "RFCナンバー": "RFC",
+    "RFC": "RFC",
+    "CFDI": "CFDI timbrado",
+    "SAT": "SAT",
+    "請求書発行": "emitir factura",
+    "明細": "detalle",
+    "リポート": "reporte",
+    "ダッシュボード": "dashboard",
+    "ODOO": "odoo",
+}
+
+_KW_EN: Dict[str, str] = {
+    # Invoicing / Billing
+    "invoice": "factura facturas",
+    "invoices": "facturas facturación",
+    "billing": "facturación",
+    "stamp": "timbrar timbrado",
+    "stamped": "timbrado CFDI",
+    "cfdi": "CFDI timbrado",
+    "electronic invoice": "factura electrónica",
+    # Cancellation
+    "cancel": "cancelar anular",
+    "cancellation": "cancelación",
+    "void": "anular cancelar",
+    "reverse": "reversar cancelar nota de crédito",
+    # Sales / POS
+    "sales": "ventas",
+    "sale": "venta",
+    "point of sale": "punto de venta",
+    "pos": "punto de venta POS",
+    "cash register": "caja punto de venta",
+    # Inventory
+    "inventory": "inventario",
+    "stock": "stock inventario",
+    "warehouse": "almacén almacenes",
+    "receipt": "recepción",
+    "transfer": "transferir traspaso",
+    "adjustment": "ajuste",
+    "kardex": "kardex inventario",
+    "month end": "cierre de mes",
+    "closing": "cierre",
+    # Purchases
+    "purchase": "compra",
+    "purchases": "compras",
+    "purchase order": "orden de compra",
+    "vendor": "proveedor",
+    "supplier": "proveedor proveedores",
+    # Accounting
+    "accounting": "contabilidad",
+    "payment": "pago",
+    "payments": "pagos",
+    "bank": "banco",
+    "balance": "saldo balance",
+    "tax": "impuesto",
+    "vat": "IVA impuesto",
+    "credit": "crédito",
+    "debit": "débito",
+    "account": "cuenta contable",
+    "journal": "asiento diario",
+    "ledger": "mayor contable",
+    "reconciliation": "conciliación",
+    # Customers
+    "customer": "cliente",
+    "customers": "clientes",
+    "client": "cliente",
+    # Orders
+    "order": "pedido orden",
+    "delivery": "entrega envío",
+    "shipping": "envío",
+    # Users / Config
+    "user": "usuario",
+    "settings": "configuración",
+    "configuration": "configuración",
+    "employee": "empleado",
+    "report": "reporte",
+    "print": "imprimir",
+    "search": "buscar",
+    "create": "crear",
+    "delete": "eliminar",
+    "confirm": "confirmar",
+    "refund": "devolución reembolso",
+    "return": "devolución",
+    "close": "cierre cerrar",
+    "open": "abrir apertura",
+    "product": "producto",
+    "products": "productos",
+    "price": "precio",
+    "discount": "descuento",
+    "rfc": "RFC",
+    "sat": "SAT",
+}
+
+
+def traducir_consulta_i18n(consulta: str, idioma: str) -> str:
+    """Traduce términos JA/EN de la consulta a palabras clave ES para buscar().
+
+    No reemplaza la consulta original; construye un string enriquecido
+    que concatena la consulta original + los equivalentes en español,
+    aumentando la cobertura de coincidencias en el índice.
+
+    Args:
+        consulta: Texto tal como lo escribió el usuario (JA, EN, ES, etc.).
+        idioma: Código de idioma ("ja", "en", "es").
+
+    Returns:
+        String con términos en español para usar como consulta de búsqueda.
+    """
+    if idioma == "es":
+        return consulta
+
+    kw_map = _KW_JA if idioma == "ja" else _KW_EN
+    terminos_es: List[str] = []
+
+    # Búsqueda exacta de frases primero (para "point of sale", "purchase order", etc.)
+    consulta_lower = consulta.lower()
+    for termino, equivalente in sorted(kw_map.items(), key=lambda x: -len(x[0])):
+        if termino.lower() in consulta_lower:
+            terminos_es.append(equivalente)
+
+    if not terminos_es:
+        # Fallback: incluir la consulta original (puede que ya tenga "Odoo", etc.)
+        return consulta
+
+    # Combinar equivalentes ES + consulta original (el índice puede tener "Odoo")
+    return " ".join(terminos_es) + " " + consulta
+
 try:
     from docx import Document
     from docx.oxml.ns import qn
@@ -499,15 +710,62 @@ class ProcesadorManuales:
             logger.error(f"Error generando URL de imagen: {e}")
             return None
     
-    def formatear_respuesta(self, resultados: List[ResultadoBusqueda]) -> str:
+    def formatear_respuesta(self, resultados: List['ResultadoBusqueda'], idioma: str = "es") -> str:
         """
         Formatea los resultados como Markdown CON PASOS E IMÁGENES.
         Usa URLs del endpoint /manuales/imagenes/ para referenciar imágenes.
+
+        Args:
+            resultados: Lista de ResultadoBusqueda.
+            idioma: Código de idioma ("es", "en", "ja") para el texto estructural.
         """
+        # ── Strings estructurales multilingüe ─────────────────────────────
+        _TITULO_SECCION = {
+            "en": "## Odoo Manual\n\n",
+            "ja": "## Odooマニュアル\n\n",
+        }
+        _PASO_LABEL = {
+            "en": "**Step {n}.**",
+            "ja": "**ステップ{n}.**",
+        }
+        _VER_IMAGEN = {
+            "en": "(See image)",
+            "ja": "（画像参照）",
+        }
+        _VER_IMAGEN_REF = {
+            "en": "(Reference image for:",
+            "ja": "（参照画像：",
+        }
+        _PIE = {
+            "en": "\n---\n *Information extracted from the Odoo Manual*",
+            "ja": "\n---\n *Odooマニュアルより抜粋*",
+        }
+        _NO_ENCONTRADO = {
+            "en": (
+                "I couldn't find information about that in the Odoo manual.\n\n"
+                "Could you rephrase your question or use different keywords?"
+            ),
+            "ja": (
+                "Odooマニュアルにその情報は見つかりませんでした。\n\n"
+                "質問を言い換えるか、別のキーワードを使ってみてください。"
+            ),
+        }
+
+        titulo_md = _TITULO_SECCION.get(idioma, "## Manual de Odoo\n\n")
+        paso_fmt = _PASO_LABEL.get(idioma, "**Paso {n}.**")
+        ver_img = _VER_IMAGEN.get(idioma, "(Ver imagen)")
+        ver_img_ref = _VER_IMAGEN_REF.get(idioma, "(Ver imagen de referencia para:")
+        pie_md = _PIE.get(idioma, "\n---\n *Información extraída del Manual de Odoo*")
+        no_encontrado = _NO_ENCONTRADO.get(
+            idioma,
+            "No encontré información sobre eso en el manual.\n\n"
+            "¿Podrías reformular tu pregunta o usar otras palabras?"
+        )
+
         if not resultados:
-            return "No encontré información sobre eso en el manual.\n\n¿Podrías reformular tu pregunta o usar otras palabras?"
+            return no_encontrado
         
-        md = "## Manual de Odoo\n\n"
+        md = titulo_md
         
         for resultado in resultados[:1]:  # Solo el resultado más relevante
             seccion = resultado.seccion
@@ -531,29 +789,31 @@ class ProcesadorManuales:
                     
                     # Solo mostrar si tiene texto significativo
                     if texto and texto != "(Ver imagen)":
-                        md += f"**Paso {numero}.** {texto}\n\n"
+                        label = paso_fmt.format(n=numero)
+                        md += f"{label} {texto}\n\n"
                         pasos_mostrados += 1
                     
                     # Mostrar imagen como URL (con límite)
                     if imagen and imagenes_mostradas < max_imagenes:
                         url = self._imagen_a_url(imagen)
                         if url:
-                            md += f"![Paso {numero}]({url})\n\n"
+                            md += f"![{ver_img} {numero}]({url})\n\n"
                             imagenes_mostradas += 1
             else:
                 # Si no hay pasos estructurados, mostrar contenido como lista
                 lineas = seccion.contenido.split('\n')
                 for i, linea in enumerate(lineas[:15], 1):
                     if linea.strip():
-                        md += f"**{i}.** {linea.strip()}\n\n"
+                        label = paso_fmt.format(n=i)
+                        md += f"{label} {linea.strip()}\n\n"
                 
                 # Agregar algunas imágenes
                 for i, img in enumerate(seccion.imagenes[:5]):
                     url = self._imagen_a_url(img)
                     if url:
-                        md += f"![Referencia {i+1}]({url})\n\n"
+                        md += f"![{ver_img} {i+1}]({url})\n\n"
         
-        md += "\n---\n *Información extraída del Manual de Odoo*"
+        md += pie_md
         
         return md
     

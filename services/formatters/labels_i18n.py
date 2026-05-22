@@ -20,7 +20,33 @@ from typing import List, Tuple
 # Orden importa: los más largos primero para evitar solapamientos.
 # ---------------------------------------------------------------------------
 _EXACT: List[Tuple[str, str, str]] = [
-    # ── FormateadorConclusiones (legacy HTML marker) ──────────────────────
+    # ── Manual de Odoo (estructural) ──────────────────────────────────────
+    ("## Odooマニュアル\n\nマニュアルインデックスがまだ生成されていません。先に`MANUAL.docx`ファイルを処理してください。",
+     "## Odoo Manual\n\nThe manual index has not been generated yet. Please process the `MANUAL.docx` file first.",
+     "## Odooマニュアル\n\nマニュアルインデックスがまだ生成されていません。先に`MANUAL.docx`ファイルを処理してください。"),
+    ("## Odoo Manual\n\nThe manual index has not been generated yet. Please process the `MANUAL.docx` file first.",
+     "## Odoo Manual\n\nThe manual index has not been generated yet. Please process the `MANUAL.docx` file first.",
+     "## Odooマニュアル\n\nマニュアルインデックスがまだ生成されていません。先に`MANUAL.docx`ファイルを処理してください。"),
+    ("## Manual de Odoo\n\nEl índice del manual aún no está generado. Procesa el archivo `MANUAL.docx` primero.",
+     "## Odoo Manual\n\nThe manual index has not been generated yet. Please process the `MANUAL.docx` file first.",
+     "## Odooマニュアル\n\nマニュアルインデックスがまだ生成されていません。先に`MANUAL.docx`ファイルを処理してください。"),
+    ("## Consultar Manual\n\nNo se pudo acceder al manual de Odoo.",
+     "## Manual Query\n\nCould not access the Odoo manual.",
+     "## マニュアル照会\n\nOdooマニュアルにアクセスできませんでした。"),
+    ("## Manual de Odoo",                  "## Odoo Manual",                "## Odooマニュアル"),
+    ("*Información extraída del Manual de Odoo*",
+     "*Information extracted from the Odoo Manual*",
+     "*Odooマニュアルより抜粋*"),
+    ("No encontré información sobre eso en el manual.\n\n¿Podrías reformular tu pregunta o usar otras palabras?",
+     "I couldn't find information about that in the Odoo manual.\n\nCould you rephrase your question or use different keywords?",
+     "Odooマニュアルにその情報は見つかりませんでした。\n\n質問を言い換えるか、別のキーワードを使ってみてください。"),
+    ("(Ver imagen de referencia para:",     "(Reference image for:",         "（参照画像："),
+    ("(Ver imagen)",                        "(See image)",                   "（画像参照）"),
+    ("*... (ver manual completo para más pasos)*",
+     "*... (see the full manual for more steps)*",
+     "*... (詳細はマニュアル全文をご覧ください)*"),
+
+    # ── Conclusiones wrapper (FormateadorConclusiones) ─────────────────────
     ("<!-- conclusiones-aplicadas -->", "", ""),
 
     # ── Títulos de sección (## / ###) ─────────────────────────────────────
@@ -440,8 +466,19 @@ _EXACT: List[Tuple[str, str, str]] = [
 # Reemplazos con regex: (patron, reemplazo_en, reemplazo_ja)
 # Grupos de captura usados para preservar valores dinámicos.
 # ---------------------------------------------------------------------------
-_REGEX: List[Tuple[str, str, str]] = [
-    # "Los top 10 productos generan el **45.3%** de los ingresos totales."
+_REGEX: List[Tuple[str, str, str]] = [    # "**Paso N.** texto..." → "**Step N.** texto..." / "**ステップN.** texto..."
+    (
+        r"\*\*Paso (\d+)\.\*\*",
+        r"**Step \1.**",
+        r"**ステップ\1.**",
+    ),
+    # "**N.** texto..." (formato sin "Paso", usado en lista sin pasos estructurados)
+    # Solo traducir si va al inicio de línea para evitar falsos positivos
+    (
+        r"^(\*\*)(\d+)(\.\*\*)",
+        r"\g<1>\2\3",
+        r"\g<1>\2\3",
+    ),    # "Los top 10 productos generan el **45.3%** de los ingresos totales."
     (
         r"Los top (\d+) productos generan el \*\*(.+?)\*\* de los ingresos totales\.",
         r"The top \1 products generate **\2** of total revenue.",

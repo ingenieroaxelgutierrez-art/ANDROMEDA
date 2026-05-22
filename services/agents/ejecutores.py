@@ -4502,18 +4502,30 @@ class EjecutoresAgente:
         # ── consultar_manual ──────────────────────────────────────────────────
         if accion == 'consultar_manual':
             try:
-                from services.knowledge.procesador_manuales import obtener_procesador
+                from services.knowledge.procesador_manuales import (
+                    obtener_procesador, traducir_consulta_i18n,
+                )
+                from models.conector_odoo import _ctx_idioma
+                idioma_manual = _ctx_idioma.get()
+
                 proc = obtener_procesador()
                 if not proc.secciones:
+                    _TITULO_NO_IDX = {
+                        "en": "## Odoo Manual\n\nThe manual index has not been generated yet. Please process the `MANUAL.docx` file first.",
+                        "ja": "## Odooマニュアル\n\nマニュアルインデックスがまだ生成されていません。先に`MANUAL.docx`ファイルを処理してください。",
+                    }
                     return (
-                        "## Manual de Odoo\n\n"
-                        "El índice del manual aún no está generado. "
-                        "Procesa el archivo `MANUAL.docx` primero.",
+                        _TITULO_NO_IDX.get(
+                            idioma_manual,
+                            "## Manual de Odoo\n\nEl índice del manual aún no está generado. "
+                            "Procesa el archivo `MANUAL.docx` primero."
+                        ),
                         None
                     )
-                # Buscar usando el mensaje completo del usuario como consulta
-                resultados = proc.buscar(mensaje, max_resultados=2)
-                resp = proc.formatear_respuesta(resultados)
+                # Normalizar consulta: JA/EN → palabras clave ES para el índice
+                consulta_busqueda = traducir_consulta_i18n(mensaje, idioma_manual)
+                resultados = proc.buscar(consulta_busqueda, max_resultados=2)
+                resp = proc.formatear_respuesta(resultados, idioma=idioma_manual)
             except Exception:
                 resp = "## Consultar Manual\n\nNo se pudo acceder al manual de Odoo."
             return resp, None
