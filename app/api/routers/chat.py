@@ -307,55 +307,58 @@ def _resolver_area_desde_bd(area_id: str) -> tuple[str | None, str | None]:
 
 
 def _traducir_respuesta_datos(bot, texto: str, idioma: str) -> str:
-    """Traduce al idioma objetivo las etiquetas de respuestas de datos usando el LLM.
+    """Traduce al idioma objetivo las etiquetas de respuestas de datos.
 
-    Solo se llama cuando idioma != 'es'. Usa el LLM ya instanciado en el bot
-    con temperatura=0 para máxima fidelidad. Si el LLM no está disponible o
-    falla, retorna el texto original (fallback silencioso).
+    Estrategia en dos capas:
+    1. Diccionario de etiquetas (labels_i18n.traducir_etiquetas) — siempre
+       disponible, cubre todos los templates conocidos de FormateadorRespuestas.
+    2. LLM (si está activo) — traduce cualquier string residual no cubierto
+       por el diccionario.
 
-    CRÍTICO: el system_prompt instruye al LLM a preservar TODA la sintaxis
-    Markdown, emojis, números, nombres de productos/empresas y códigos.
-    Solo traduce las etiquetas de interfaz (títulos de sección, encabezados
-    de tabla, mensajes descriptivos).
+    Preserva en todo momento: markdown, emojis, números, nombres propios y
+    códigos de producto.
     """
+    if idioma not in ("en", "ja"):
+        return texto
+
+    # Capa 1: traducción por diccionario (no requiere LLM)
+    try:
+        from services.formatters.labels_i18n import traducir_etiquetas
+        texto = traducir_etiquetas(texto, idioma)
+    except Exception:
+        pass  # Si falla el módulo, continúa al LLM
+
+    # Capa 2: mejora con LLM si está disponible (traduce residuos no cubiertos)
     _LANGS = {"en": "English", "ja": "Japanese"}
     lang = _LANGS.get(idioma)
-    if not lang:
-        return texto
-
     agente = getattr(bot, 'agente_llm', None)
-    if not agente:
-        return texto
     llm = getattr(agente, 'llm', None)
     modelo = getattr(agente, 'modelo', None)
-    if not llm or not modelo or not getattr(llm, 'disponible', False):
-        return texto
+    if lang and llm and modelo and getattr(llm, 'disponible', False):
+        try:
+            system_prompt = (
+                f"You are a professional translator for business analytics reports. "
+                f"Translate any remaining Spanish text in the following Markdown to {lang}. "
+                f"MANDATORY RULES:\n"
+                f"1. Preserve ALL Markdown syntax (**, *, ##, ###, |, -, >, `) exactly.\n"
+                f"2. Preserve ALL emojis, numbers, percentages, and monetary values unchanged.\n"
+                f"3. Do NOT translate product names, brand names, company names, or SKU codes.\n"
+                f"4. Only translate labels and descriptive text that are still in Spanish.\n"
+                f"5. Output ONLY the translated text — no preamble or explanation."
+            )
+            resultado = llm.generar(
+                prompt=texto,
+                modelo=modelo,
+                system_prompt=system_prompt,
+                temperatura=0.0,
+                max_tokens=4096,
+            )
+            if resultado and getattr(resultado, 'exito', False):
+                contenido = getattr(resultado, 'contenido', '').strip()
+                if contenido:
+                    texto = contenido
+        except Exception:
+            pass
 
-    system_prompt = (
-        f"You are a professional translator specializing in business analytics reports. "
-        f"Translate the following Markdown text from Spanish to {lang}. "
-        f"MANDATORY RULES — follow ALL without exception:\n"
-        f"1. Preserve ALL Markdown syntax (**, *, ##, ###, |, -, >, ~, `) character-for-character.\n"
-        f"2. Preserve ALL emojis exactly (🔴, 🟡, 🟢, 📊, 💡, 📎, 🏆, etc.).\n"
-        f"3. Preserve ALL numbers, percentages, and monetary values (e.g. $320,102.09, 15.3%) without any modification.\n"
-        f"4. Do NOT translate: product names, brand names, company names, person names, city names.\n"
-        f"5. Do NOT translate codes in brackets like [SKU-123] or similar identifiers.\n"
-        f"6. Do NOT add, remove, or reorder any table rows or columns.\n"
-        f"7. Translate ONLY: section titles (###), column headers in tables (|...|), "
-        f"descriptive labels, insight sentences, and call-to-action messages.\n"
-        f"8. Output ONLY the translated text — no preamble, no explanation, no wrapping."
-    )
-
-    resultado = llm.generar(
-        prompt=texto,
-        modelo=modelo,
-        system_prompt=system_prompt,
-        temperatura=0.0,
-        max_tokens=4096,
-    )
-    if resultado and getattr(resultado, 'exito', False):
-        contenido = getattr(resultado, 'contenido', '').strip()
-        if contenido:
-            return contenido
     return texto
 
