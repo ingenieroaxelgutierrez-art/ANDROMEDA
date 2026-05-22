@@ -47,6 +47,7 @@ async def procesar_chat(
     # empresa_id se extrae del JWT (no del body) para garantizar que el usuario
     # solo puede consultar datos de su propia empresa — no puede suplantarla.
     empresa_id: str | None = ctx.get("empresa_id") or request.empresa_id
+    idioma: str = request.idioma or "es"
     t_inicio = time.perf_counter()
 
     # ── Sprint 3: Resolver área del usuario para filtrado en ConectorOdoo ─────
@@ -80,8 +81,6 @@ async def procesar_chat(
 
     exito = True
     error_msg: str | None = None
-
-    idioma: str = request.idioma or "es"
 
     try:
         historial_actualizado, tabla_html, status = await asyncio.get_event_loop().run_in_executor(
