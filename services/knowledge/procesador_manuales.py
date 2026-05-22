@@ -197,6 +197,78 @@ _KW_EN: Dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Traducción de contenido del manual vía Google Translate (requests, free)
+# ---------------------------------------------------------------------------
+_SEP_BATCH = "|||S|||"  # separador difícil de traducir
+
+
+def _traducir_google(texto: str, lang_destino: str) -> str:
+    """Llama a la API gratuita de Google Translate y devuelve el texto traducido.
+
+    Usa el cliente 'gtx' (mismo que el navegador web, sin API key).
+    Maneja textos largos dividiéndolos en fragmentos de ≤4000 chars.
+    """
+    import requests as _req  # ya en requirements.txt
+    if not texto or not texto.strip():
+        return texto
+
+    def _llamar(fragmento: str) -> str:
+        resp = _req.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={"client": "gtx", "sl": "es", "tl": lang_destino,
+                    "dt": "t", "q": fragmento},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return "".join(part[0] for part in data[0] if part[0])
+
+    # Dividir en fragmentos de 4000 chars si el texto es largo
+    if len(texto) <= 4000:
+        return _llamar(texto)
+    partes, acum = [], ""
+    for linea in texto.split("\n"):
+        if len(acum) + len(linea) + 1 > 4000:
+            if acum:
+                partes.append(_llamar(acum))
+            acum = linea
+        else:
+            acum = (acum + "\n" + linea) if acum else linea
+    if acum:
+        partes.append(_llamar(acum))
+    return "\n".join(partes)
+
+
+def _traducir_pasos_batch(pasos: List[Dict], lang_destino: str) -> List[Dict]:
+    """Traduce una lista de pasos en una sola llamada API (batch)."""
+    textos_a_traducir = []
+    indices = []
+    for i, paso in enumerate(pasos):
+        texto = paso.get("texto", "")
+        if texto and texto not in ("(Ver imagen)", "(See image)", "（画像参照）"):
+            textos_a_traducir.append(texto)
+            indices.append(i)
+
+    if not textos_a_traducir:
+        return [dict(p) for p in pasos]
+
+    batch = _SEP_BATCH.join(textos_a_traducir)
+    try:
+        batch_traducido = _traducir_google(batch, lang_destino)
+    except Exception:
+        return [dict(p) for p in pasos]
+
+    # Re-split — el separador rara vez se altera en traducción
+    partes = re.split(r'\|\|\|S\|\|\|', batch_traducido)
+
+    nuevos_pasos = [dict(p) for p in pasos]
+    if len(partes) == len(textos_a_traducir):
+        for i_p, i_src in enumerate(indices):
+            nuevos_pasos[i_src]["texto"] = partes[i_p].strip()
+    return nuevos_pasos
+
+
 def traducir_consulta_i18n(consulta: str, idioma: str) -> str:
     """Traduce términos JA/EN de la consulta a palabras clave ES para buscar().
 
@@ -254,11 +326,16 @@ class SeccionManual:
     id: str
     titulo: str
     nivel: int  # 1 = Heading 1, 2 = Heading 2
-    contenido: str  # Contenido original
+    contenido: str  # Contenido original (español)
     pasos: List[Dict] = field(default_factory=list)  # Lista de pasos con imágenes
     palabras_clave: List[str] = field(default_factory=list)
     imagenes: List[str] = field(default_factory=list)  # Rutas absolutas
     seccion_padre: Optional[str] = None
+    # Traducciones pre-generadas (se rellenan con traducir_indice())
+    titulo_en: Optional[str] = None
+    titulo_ja: Optional[str] = None
+    pasos_en: List[Dict] = field(default_factory=list)
+    pasos_ja: List[Dict] = field(default_factory=list)
 
 
 @dataclass
@@ -308,12 +385,15 @@ class ProcesadorManuales:
             try:
                 with open(self.archivo_indice, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                
+
+                campos_validos = {f.name for f in SeccionManual.__dataclass_fields__.values()}
                 for id_seccion, sec_dict in data.get('secciones', {}).items():
-                    self.secciones[id_seccion] = SeccionManual(**sec_dict)
-                
+                    # Filtrar claves desconocidas (compatibilidad hacia atrás/adelante)
+                    sec_filtrado = {k: v for k, v in sec_dict.items() if k in campos_validos}
+                    self.secciones[id_seccion] = SeccionManual(**sec_filtrado)
+
                 self.indice_palabras = data.get('indice_palabras', {})
-                
+
             except Exception as e:
                 logger.error(f"Error cargando índice: {e}")
     
@@ -710,6 +790,60 @@ class ProcesadorManuales:
             logger.error(f"Error generando URL de imagen: {e}")
             return None
     
+    def traducir_indice(self, idioma: str) -> bool:
+        """Pre-traduce títulos y pasos de todas las secciones y guarda el índice.
+
+        Usa Google Translate (API gratuita via requests). La primera llamada
+        hace las peticiones de red; las siguientes usan el caché del JSON.
+
+        Args:
+            idioma: Código destino ("en" o "ja").
+
+        Returns:
+            True si tuvo éxito, False si hubo error de red o idioma inválido.
+        """
+        lang_map = {"en": "en", "ja": "ja"}
+        google_lang = lang_map.get(idioma)
+        if not google_lang:
+            return False
+
+        campo_titulo = f"titulo_{idioma}"
+        campo_pasos = f"pasos_{idioma}"
+        hubo_cambios = False
+
+        for seccion in self.secciones.values():
+            try:
+                # ── Título ──────────────────────────────────────────────
+                if not getattr(seccion, campo_titulo, None):
+                    traducido = _traducir_google(seccion.titulo, google_lang)
+                    setattr(seccion, campo_titulo, traducido)
+                    hubo_cambios = True
+
+                # ── Pasos ───────────────────────────────────────────────
+                if not getattr(seccion, campo_pasos, None) and seccion.pasos:
+                    nuevos = _traducir_pasos_batch(seccion.pasos, google_lang)
+                    setattr(seccion, campo_pasos, nuevos)
+                    hubo_cambios = True
+
+            except Exception as e:
+                logger.warning(f"Error traduciendo sección {seccion.id}: {e}")
+                # Dejar campos vacíos para intentarlo la próxima vez
+
+        if hubo_cambios:
+            try:
+                self._guardar_indice()
+            except Exception as e:
+                logger.error(f"Error guardando índice tras traducción: {e}")
+
+        return True
+
+    def tiene_traducciones(self, idioma: str) -> bool:
+        """True si al menos la primera sección ya tiene el título traducido."""
+        primera = next(iter(self.secciones.values()), None)
+        if primera is None:
+            return False
+        return bool(getattr(primera, f"titulo_{idioma}", None))
+
     def formatear_respuesta(self, resultados: List['ResultadoBusqueda'], idioma: str = "es") -> str:
         """
         Formatea los resultados como Markdown CON PASOS E IMÁGENES.
@@ -764,57 +898,64 @@ class ProcesadorManuales:
 
         if not resultados:
             return no_encontrado
-        
+
         md = titulo_md
-        
+
         for resultado in resultados[:1]:  # Solo el resultado más relevante
             seccion = resultado.seccion
-            
-            md += f"### {seccion.titulo}\n\n"
-            
-            # Mostrar pasos con imágenes
-            if seccion.pasos:
+
+            # ── Título: usar traducción si existe ────────────────────────────
+            titulo_mostrar = (
+                getattr(seccion, f"titulo_{idioma}", None) or seccion.titulo
+            )
+            md += f"### {titulo_mostrar}\n\n"
+
+            # ── Pasos: usar pasos traducidos si existen ───────────────────────
+            pasos_mostrar = (
+                getattr(seccion, f"pasos_{idioma}", None) or seccion.pasos
+            ) if idioma != "es" else seccion.pasos
+
+            if pasos_mostrar:
                 pasos_mostrados = 0
                 imagenes_mostradas = 0
-                max_imagenes = 30  # Limitar imágenes para no saturar
-                
-                for paso in seccion.pasos:
-                    if pasos_mostrados >= 30:  # Máximo 30 pasos
+                max_imagenes = 30
+
+                for paso in pasos_mostrar:
+                    if pasos_mostrados >= 30:
                         md += "\n*... (ver manual completo para más pasos)*\n"
                         break
-                    
+
                     numero = paso.get('numero', '')
                     texto = paso.get('texto', '')
-                    imagen = paso.get('imagen')
-                    
-                    # Solo mostrar si tiene texto significativo
-                    if texto and texto != "(Ver imagen)":
+                    # La imagen siempre se toma del paso original (mismo índice)
+                    paso_orig = seccion.pasos[pasos_mostrados] if pasos_mostrados < len(seccion.pasos) else paso
+                    imagen = paso_orig.get('imagen')
+
+                    if texto and texto not in ("(Ver imagen)", "(See image)", "（画像参照）"):
                         label = paso_fmt.format(n=numero)
                         md += f"{label} {texto}\n\n"
                         pasos_mostrados += 1
-                    
-                    # Mostrar imagen como URL (con límite)
+
                     if imagen and imagenes_mostradas < max_imagenes:
                         url = self._imagen_a_url(imagen)
                         if url:
                             md += f"![{ver_img} {numero}]({url})\n\n"
                             imagenes_mostradas += 1
             else:
-                # Si no hay pasos estructurados, mostrar contenido como lista
+                # Contenido sin pasos estructurados
                 lineas = seccion.contenido.split('\n')
                 for i, linea in enumerate(lineas[:15], 1):
                     if linea.strip():
                         label = paso_fmt.format(n=i)
                         md += f"{label} {linea.strip()}\n\n"
-                
-                # Agregar algunas imágenes
+
                 for i, img in enumerate(seccion.imagenes[:5]):
                     url = self._imagen_a_url(img)
                     if url:
                         md += f"![{ver_img} {i+1}]({url})\n\n"
-        
+
         md += pie_md
-        
+
         return md
     
     def obtener_seccion_completa(self, titulo_parcial: str) -> Optional[SeccionManual]:

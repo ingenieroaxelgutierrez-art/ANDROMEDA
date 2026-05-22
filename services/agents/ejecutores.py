@@ -4522,6 +4522,14 @@ class EjecutoresAgente:
                         ),
                         None
                     )
+
+                # Pre-traducir el índice si aún no existe traducción para este idioma
+                if idioma_manual != "es" and not proc.tiene_traducciones(idioma_manual):
+                    try:
+                        proc.traducir_indice(idioma_manual)
+                    except Exception as _te:
+                        logger.warning(f"No se pudo pre-traducir manual al {idioma_manual}: {_te}")
+
                 # Normalizar consulta: JA/EN → palabras clave ES para el índice
                 consulta_busqueda = traducir_consulta_i18n(mensaje, idioma_manual)
                 resultados = proc.buscar(consulta_busqueda, max_resultados=2)
