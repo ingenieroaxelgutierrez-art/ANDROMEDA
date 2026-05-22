@@ -35,6 +35,10 @@ class MensajeRequest(BaseModel):
             "El servidor no mantiene estado: el cliente es responsable de enviarlo."
         ),
     )
+    idioma: Optional[str] = Field(
+        default="es",
+        description="Código de idioma para las respuestas del bot: 'es' (español), 'en' (inglés), 'ja' (japonés).",
+    )
 
 
 class RespuestaAPI(BaseModel):

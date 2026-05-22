@@ -1750,7 +1750,7 @@ class OdooAIProV5:
     # Rate limiting: máximo de requests por minuto por sesión
     MAX_REQUESTS_PER_MINUTE = 30
 
-    def procesar_mensaje(self, mensaje: str, historial: List[Dict]) -> Tuple[List[Dict], str, str]:
+    def procesar_mensaje(self, mensaje: str, historial: List[Dict], idioma: str = "es") -> Tuple[List[Dict], str, str]:
         """Procesa un mensaje con NLP avanzado, LLM y predicciones."""
         if not mensaje.strip():
             return historial, "", "✓ Listo"
@@ -1850,12 +1850,12 @@ class OdooAIProV5:
         
         # 2. Si LLM está activo, usar el agente inteligente
         if self.llm_activo and self.agente_llm:
-            return self._procesar_con_llm(mensaje, historial, resp_empatica, tipo_emp, tiempo_inicio, recuerdos_semanticos)
+            return self._procesar_con_llm(mensaje, historial, resp_empatica, tipo_emp, tiempo_inicio, recuerdos_semanticos, idioma=idioma)
         
         # 3. Fallback: Usar sistema NLP tradicional
         return self._procesar_tradicional(mensaje, historial, resp_empatica, tipo_emp, tiempo_inicio, recuerdos_semanticos)
     
-    def _procesar_con_llm(self, mensaje: str, historial: List[Dict], resp_empatica: str, tipo_emp: str, tiempo_inicio=None, recuerdos_semanticos: List[str] = None) -> Tuple[List[Dict], str, str]:
+    def _procesar_con_llm(self, mensaje: str, historial: List[Dict], resp_empatica: str, tipo_emp: str, tiempo_inicio=None, recuerdos_semanticos: List[str] = None, idioma: str = "es") -> Tuple[List[Dict], str, str]:
         """Procesa mensaje usando el cerebro LLM."""
         try:
             # Enriquecer mensaje con contexto de memoria si hay recuerdos relevantes
@@ -1876,7 +1876,7 @@ class OdooAIProV5:
                 mensaje_enriquecido = f"{mensaje}\n\n[Contexto:\n" + "\n".join(bloques_contexto) + "]"
 
             # Obtener respuesta del agente
-            respuesta_llm, accion = self.agente_llm.procesar(mensaje_enriquecido)
+            respuesta_llm, accion = self.agente_llm.procesar(mensaje_enriquecido, idioma=idioma)
             
             df = None
             respuesta_final = respuesta_llm

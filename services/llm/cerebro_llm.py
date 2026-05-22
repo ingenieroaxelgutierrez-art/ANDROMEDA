@@ -282,11 +282,18 @@ No mezcles varias acciones: elige la más útil para avanzar la solicitud del us
         # Si no hay preferidos, usar el primero disponible o default
         return modelos[0] if modelos else "llama3.2"
     
-    def _get_system_prompt(self) -> str:
-        """Genera el prompt del sistema con contexto actual."""
+    def _get_system_prompt(self, idioma: str = "es") -> str:
+        """Genera el prompt del sistema con contexto actual e idioma seleccionado."""
+        _LANG_NAMES = {"es": "Spanish", "en": "English", "ja": "Japanese"}
+        lang_name = _LANG_NAMES.get(idioma, "Spanish")
+        lang_rule = (
+            f"\n\n## RESPONSE LANGUAGE\nYou MUST respond exclusively in {lang_name}. "
+            f"Do not use any other language. All text, labels, explanations and summaries "
+            f"must be in {lang_name}."
+        ) if idioma != "es" else ""
         prompt = self.SYSTEM_PROMPT.format(
             fecha_actual=datetime.now().strftime("%Y-%m-%d %H:%M")
-        )
+        ) + lang_rule
         empresa = os.getenv("ODOO_EMPRESA", "Mi Empresa")
         return prompt.replace("{empresa}", empresa)
     
@@ -560,10 +567,14 @@ No mezcles varias acciones: elige la más útil para avanzar la solicitud del us
         respuesta = re.sub(r'^\s*\{["\']accion["\'].*?\}\s*', '', respuesta)
         return respuesta.strip()
     
-    def procesar(self, mensaje: str) -> Tuple[str, Optional[AccionDetectada]]:
+    def procesar(self, mensaje: str, idioma: str = "es") -> Tuple[str, Optional[AccionDetectada]]:
         """
         Procesa un mensaje del usuario.
         
+        Args:
+            mensaje: Texto del usuario.
+            idioma: Código de idioma para la respuesta ('es', 'en', 'ja').
+
         Returns:
             Tuple[respuesta_texto, accion_detectada]
         """
@@ -586,7 +597,7 @@ No mezcles varias acciones: elige la más útil para avanzar la solicitud del us
         respuesta_llm = self.llm.generar(
             prompt=mensaje,
             modelo=self.modelo,
-            system_prompt=self._get_system_prompt(),
+            system_prompt=self._get_system_prompt(idioma=idioma),
             historial=self.historial[:-1],  # Excluir el mensaje actual
             temperatura=0.5,
             max_tokens=2048  # Respuestas completas sin truncar

@@ -80,11 +80,13 @@ async def procesar_chat(
     exito = True
     error_msg: str | None = None
 
+    idioma: str = request.idioma or "es"
+
     try:
         historial_actualizado, tabla_html, status = await asyncio.get_event_loop().run_in_executor(
             None,
             _ctx_copy.run,
-            lambda: bot.procesar_mensaje(mensaje=request.mensaje, historial=historial),
+            lambda: bot.procesar_mensaje(mensaje=request.mensaje, historial=historial, idioma=idioma),
         )
     except Exception as exc:
         exito = False

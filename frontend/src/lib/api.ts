@@ -283,7 +283,8 @@ export async function enviarMensaje(
   mensaje: string,
   sessionId: string,
   historialPrevio: MensajeChat[] = [],
-  empresaId?: string
+  empresaId?: string,
+  locale?: string
 ): Promise<RespuestaChat> {
   const res = await _fetch("/chat", {
     method: "POST",
@@ -292,6 +293,7 @@ export async function enviarMensaje(
       session_id: sessionId,
       historial: historialPrevio,
       empresa_id: empresaId,
+      idioma: locale ?? "es",
     }),
   });
   if (!res.ok) throw await _parseError(res);

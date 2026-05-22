@@ -7,7 +7,7 @@ import ChatBubble from "@/components/ChatBubble";
 import { useI18n } from "@/components/I18nProvider";
 
 export default function AdminChatPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [sessionId] = useState(() => crypto.randomUUID());
   const [empresaId, setEmpresaId]   = useState<string | null>(null);
   const [nombreAdmin, setNombreAdmin] = useState<string>("");
@@ -42,7 +42,7 @@ export default function AdminChatPage() {
     setError(null);
 
     try {
-      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined);
+      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined, locale);
       setMensajes(resp.historial);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("chat.errorSend"));

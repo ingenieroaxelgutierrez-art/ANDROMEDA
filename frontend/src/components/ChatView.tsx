@@ -25,7 +25,7 @@ export default function ChatView({
   sessionPrefix,
   accentColor = "#667eea",
 }: ChatViewProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const SESSION_KEY = `andromeda_${sessionPrefix}_session_id`;
   const HISTORY_KEY = `andromeda_${sessionPrefix}_history`;
 
@@ -85,7 +85,7 @@ export default function ChatView({
     setError(null);
 
     try {
-      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined);
+      const resp = await enviarMensaje(texto, sessionId, mensajes, empresaId ?? undefined, locale);
       setMensajes(resp.historial);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("chat.errorSend"));
