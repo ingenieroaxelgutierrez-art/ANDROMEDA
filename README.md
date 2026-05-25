@@ -1,6 +1,9 @@
-# ANDROMEDA — Agente Predictivo Empresarial para Odoo
+<p align="center">
+  <img src="./frontend/public/logo.png" alt="ANDROMEDA" width="28%">
+</p>
 
-> **Advanced Neural Data Resource for Operations, Management & Enterprise Decision Analytics**
+<h1 align="center">ANDROMEDA</h1>
+<h3 align="center">Advanced Neural Data Resource for Operations, Management &amp; Enterprise Decision Analytics</h3>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" alt="Python">
@@ -10,33 +13,48 @@
   <img src="https://img.shields.io/badge/Tests-695%20passing-22c55e?logo=pytest&logoColor=white" alt="Tests">
   <img src="https://img.shields.io/badge/Ollama-local%20LLM-FF6B35" alt="Ollama">
   <img src="https://img.shields.io/badge/Odoo-14%20→%2019+-714B67?logo=odoo&logoColor=white" alt="Odoo">
+  <img src="https://img.shields.io/badge/i18n-ES%20%7C%20EN%20%7C%20JA-8B5CF6" alt="i18n">
   <img src="https://img.shields.io/badge/License-MIT-blue" alt="License">
 </p>
 
-ANDROMEDA es un agente conversacional de IA de propósito empresarial que se conecta directamente a instancias Odoo y responde consultas en lenguaje natural sobre datos de negocio en tiempo real. Combina un pipeline NLP multi-capa, orquestación multi-agente con 13 agentes de dominio, RAG con memoria vectorial persistente, ML/DL híbrido y una API REST con frontend React — **100% local, zero data egress**.
+<p align="center">
+  <b>🌐 Language / 言語:</b>&nbsp;
+  <a href="#versión-en-español">Español</a> &nbsp;|&nbsp;
+  <a href="#日本語版">日本語</a>
+</p>
+
+
+---
+
+# Versión en Español
+
+## Descripción
+
+ANDROMEDA es un agente conversacional de IA de propósito empresarial que se conecta directamente a instancias Odoo y responde consultas en **lenguaje natural** sobre datos de negocio en tiempo real. Combina un pipeline NLP multi-capa, orquestación multi-agente con 13 agentes de dominio, RAG con memoria vectorial persistente, ML/DL híbrido, **soporte multiidioma nativo (ES · EN · JA)** y una API REST con frontend React — **100 % local, zero data egress**.
 
 ---
 
 ## Tabla de Contenido
 
 1. [Arquitectura del sistema](#1-arquitectura-del-sistema)
-2. [Stack tecnológico](#2-stack-tecnológico)
-3. [Pipeline de ejecución](#3-pipeline-de-ejecución)
-4. [Sistema multi-agente](#4-sistema-multi-agente)
-5. [Motor NLP](#5-motor-nlp)
-6. [Memoria y conocimiento](#6-memoria-y-conocimiento)
-7. [Motor LLM (Ollama)](#7-motor-llm-ollama)
-8. [Predicción ML/DL](#8-predicción-mldl)
-9. [Auditoría de datos](#9-auditoría-de-datos)
-10. [Capa API REST (FastAPI)](#10-capa-api-rest-fastapi)
-11. [Frontend (Next.js 14)](#11-frontend-nextjs-14)
-12. [Seguridad](#12-seguridad)
-13. [Estructura del proyecto](#13-estructura-del-proyecto)
-14. [Instalación y configuración](#14-instalación-y-configuración)
-15. [Docker](#15-docker)
-16. [Testing](#16-testing)
-17. [Despliegue](#17-despliegue)
-18. [Troubleshooting](#18-troubleshooting)
+2. [Sistema multiidioma](#2-sistema-multiidioma)
+3. [Stack tecnológico](#3-stack-tecnológico)
+4. [Pipeline de ejecución](#4-pipeline-de-ejecución)
+5. [Sistema multi-agente](#5-sistema-multi-agente)
+6. [Motor NLP](#6-motor-nlp)
+7. [Memoria y conocimiento](#7-memoria-y-conocimiento)
+8. [Motor LLM (Ollama)](#8-motor-llm-ollama)
+9. [Predicción ML/DL](#9-predicción-mldl)
+10. [Auditoría de datos](#10-auditoría-de-datos)
+11. [Capa API REST (FastAPI)](#11-capa-api-rest-fastapi)
+12. [Frontend (Next.js 14)](#12-frontend-nextjs-14)
+13. [Seguridad](#13-seguridad)
+14. [Estructura del proyecto](#14-estructura-del-proyecto)
+15. [Instalación y configuración](#15-instalación-y-configuración)
+16. [Docker](#16-docker)
+17. [Testing](#17-testing)
+18. [Despliegue](#18-despliegue)
+19. [Troubleshooting](#19-troubleshooting)
 
 ---
 
@@ -47,17 +65,19 @@ ANDROMEDA implementa una arquitectura **Layered Modular Application** con un pip
 ### Capas aplicativas
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  PRESENTACIÓN   Gradio Blocks · Next.js 14 · FastAPI    │
-├─────────────────────────────────────────────────────────┤
-│  ORQUESTACIÓN   OdooBotPro · GestorMultiAgente (13)     │
-├─────────────────────────────────────────────────────────┤
-│  SERVICIOS      NLP · LLM · ML/DL · BI · Auditoría      │
-├─────────────────────────────────────────────────────────┤
-│  INTEGRACIÓN    ConectorOdoo (OdooRPC/XML-RPC, 40+ m.)  │
-├─────────────────────────────────────────────────────────┤
-│  PERSISTENCIA   ChromaDB · SQLite · NetworkX · JSON     │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  PRESENTACIÓN   Gradio Blocks · Next.js 14 · FastAPI REST       │
+├─────────────────────────────────────────────────────────────────┤
+│  I18N           ES · EN · JA — ContextVar propagation           │
+├─────────────────────────────────────────────────────────────────┤
+│  ORQUESTACIÓN   OdooBotPro · GestorMultiAgente (13 agentes)     │
+├─────────────────────────────────────────────────────────────────┤
+│  SERVICIOS      NLP · LLM · ML/DL · BI · Auditoría · Manuales  │
+├─────────────────────────────────────────────────────────────────┤
+│  INTEGRACIÓN    ConectorOdoo (OdooRPC/XML-RPC, 40+ modelos)     │
+├─────────────────────────────────────────────────────────────────┤
+│  PERSISTENCIA   ChromaDB · SQLite · NetworkX · JSON             │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Capa cognitiva (RAG + Agentic)
@@ -65,22 +85,143 @@ ANDROMEDA implementa una arquitectura **Layered Modular Application** con un pip
 ```
 Input ──► Normalización ──► NLP (intención + entidades) ──► Agent Routing
   ──► Pre-Validación ──► Ejecución Odoo ──► Enriquecimiento
-  ──► Validación Triple ──► Regeneración Condicional ──► Output
+  ──► Validación Triple ──► Regeneración Condicional
+  ──► Traducción i18n ──► Output final en idioma del usuario
 ```
 
 | Componente | Implementación | Especificación |
 |---|---|---|
 | Embedding engine | `paraphrase-multilingual-MiniLM-L12-v2` | 384d, multilingüe, cache SHA-256 auto-invalidante |
-| Semantic store | ChromaDB persistente | 6 colecciones, EF lazy post-init, max 10K docs/col, purga selectiva |
+| Semantic store | ChromaDB persistente | 6 colecciones, EF lazy post-init, max 10K docs/col |
 | Knowledge graph | NetworkX DiGraph | 14 tipos nodo, 9 relaciones, decay 90d, poda proactiva, límites 500/2000 |
 | Prompt builder | Dinámico | Inyección: memoria vectorial + grafo + datos Odoo real-time |
 | LLM runtime | Ollama local | Llama 3.2, Mistral, DeepSeek-R1:8b — zero data egress |
 | Query generator | `GeneradorQueries` | NL → Query Odoo; guardrails: `CAMPOS_PROHIBIDOS` + `MODELOS_PROHIBIDOS` |
-| Configuración host | Variable `OLLAMA_HOST` | Default: `http://localhost:11434`; en Docker: `http://host.docker.internal:11434` |
+| i18n propagation | `_ctx_idioma` ContextVar | Idioma inyectado una vez en el request; visible en toda la cadena de ejecución |
 
 ---
 
-## 2. Stack tecnológico
+## 2. Sistema multiidioma
+
+ANDROMEDA implementa soporte multiidioma completo (ES · EN · JA) en tres capas independientes. El idioma se propaga como `ContextVar` sin necesidad de pasar parámetros explícitos por la cadena de llamadas.
+
+### 2.1 Propagación del idioma
+
+```python
+# models/conector_odoo.py
+_ctx_idioma: ContextVar[str] = ContextVar("_ctx_idioma", default="es")
+
+# app/api/routers/chat.py  — se establece una vez al inicio del request
+idioma: str = request.idioma or "es"
+_token_idioma = _ctx_idioma.set(idioma)
+_ctx_copy = contextvars.copy_context()   # copia hacia todos los ejecutores
+```
+
+Cualquier capa del sistema puede leer el idioma activo sin acoplamiento:
+
+```python
+from models.conector_odoo import _ctx_idioma
+idioma = _ctx_idioma.get()   # disponible en formatters, agentes, manuales, etc.
+```
+
+### 2.2 Textos de envoltura — `FormateadorConclusiones`
+
+El texto wrapper que ANDROMEDA genera alrededor de los datos (contexto analítico, reconocimiento del dominio, cierre) se emite directamente en el idioma del usuario, sin post-procesamiento:
+
+| Idioma | Muestra de reconocimiento de dominio |
+|---|---|
+| `es` | `📊 Analicé los datos de ventas del período. Los resultados son los siguientes:` |
+| `en` | `📊 I analyzed the sales data for the period. Here are the results:` |
+| `ja` | `📊 売上データを分析しました。結果は以下の通りです：` |
+
+Implementación: `_DOMINIOS_I18N` — diccionario de tripletas `(es, en, ja)` para ~100 dominios de negocio.
+
+### 2.3 Etiquetas de tablas y secciones — `labels_i18n.py`
+
+`services/formatters/labels_i18n.py` traduce post-proceso todas las etiquetas que `FormateadorRespuestas` genera en español:
+
+| Tipo | Cobertura |
+|---|---|
+| Reemplazos exactos | ~150 strings: encabezados `###`, columnas de tabla `\|…\|`, filas de métricas, alertas, call-to-action |
+| Patrones regex | ~50 expresiones con grupos de captura para strings dinámicos con valores intercalados |
+
+```python
+from services.formatters.labels_i18n import traducir_etiquetas
+texto_ja = traducir_etiquetas(texto_es, "ja")
+```
+
+La función se aplica en `_traducir_respuesta_datos()` como **Capa 1** (sin LLM, siempre activa). Si el LLM está habilitado actúa como **Capa 2** para traducir cualquier residuo no cubierto por el diccionario.
+
+### 2.4 Manuales de Odoo — traducción completa por Google Translate
+
+La base de conocimiento (índice del manual `.docx`) se pre-traduce en la **primera consulta** en un idioma no español y se persiste en el JSON de índice. Las consultas posteriores son instantáneas.
+
+#### Flujo de búsqueda multiidioma
+
+```
+Query JA: "請求書をキャンセルするには？"
+    │
+    ▼
+traducir_consulta_i18n("ja")
+    → "cancelar anular cancelación factura facturas timbrado CFDI …"
+    │
+    ▼
+buscar(consulta_es)  →  sección "CANCELACIÓN DE FACTURACIÓN TIMBRADA"  ✓
+    │
+    ▼
+formatear_respuesta(idioma="ja")
+    → titulo_ja / pasos_ja  (pre-traducidos vía Google Translate)
+```
+
+| Componente | Responsabilidad |
+|---|---|
+| `traducir_consulta_i18n(consulta, idioma)` | ~120 términos JA/EN → keywords ES para el índice (sin red) |
+| `_traducir_google(texto, lang)` | Google Translate API gratuita (`client=gtx`), sin API key |
+| `_traducir_pasos_batch(pasos, lang)` | Concatena textos con separador `\|\|\|S\|\|\|`, 1 sola llamada HTTP por sección |
+| `traducir_indice(idioma)` | Pre-traduce todo el índice y guarda en `indice_conocimiento.json` |
+| `tiene_traducciones(idioma)` | Check rápido para evitar re-traducciones en memoria |
+| `SeccionManual.titulo_ja/en` | Campo cacheado en el JSON del índice |
+| `SeccionManual.pasos_ja/en` | Lista de pasos traducidos, cacheada en el JSON |
+
+#### Campos añadidos a `SeccionManual`
+
+```python
+@dataclass
+class SeccionManual:
+    # … campos originales …
+    titulo_en: Optional[str] = None
+    titulo_ja: Optional[str] = None
+    pasos_en: List[Dict] = field(default_factory=list)
+    pasos_ja: List[Dict] = field(default_factory=list)
+```
+
+#### Compatibilidad del índice
+
+El cargador de índice filtra claves desconocidas para garantizar compatibilidad hacia adelante y hacia atrás:
+
+```python
+campos_validos = {f.name for f in SeccionManual.__dataclass_fields__.values()}
+sec_filtrado = {k: v for k, v in sec_dict.items() if k in campos_validos}
+self.secciones[id_seccion] = SeccionManual(**sec_filtrado)
+```
+
+### 2.5 Resumen de cobertura
+
+| Componente | ES | EN | JA |
+|---|:---:|:---:|:---:|
+| Texto de contexto analítico (conclusiones) | ✅ | ✅ | ✅ |
+| Etiquetas de tablas de datos | ✅ | ✅ | ✅ |
+| Alertas e insights determinísticos | ✅ | ✅ | ✅ |
+| Títulos de sección del manual | ✅ | ✅* | ✅* |
+| Pasos del manual (contenido .docx) | ✅ | ✅* | ✅* |
+| Estructura del manual (Step/ステップ) | ✅ | ✅ | ✅ |
+| Búsqueda semántica en manual | ✅ | ✅ | ✅ |
+
+*Pre-traducido vía Google Translate en primera consulta; cacheado en el índice JSON.
+
+---
+
+## 3. Stack tecnológico
 
 | Capa | Tecnología | Versión / Especificación |
 |---|---|---|
@@ -97,6 +238,8 @@ Input ──► Normalización ──► NLP (intención + entidades) ──► 
 | Knowledge graph | NetworkX | DiGraph, poda proactiva, auto-save |
 | ML | scikit-learn | Random Forest, K-Means, Isolation Forest |
 | Deep learning | PyTorch | LSTM 2 capas, 64 hidden units, dropout 0.2 |
+| i18n — diccionario | `labels_i18n.py` | ~200 traducciones ES→EN/JA (exactas + regex) |
+| i18n — manuales | Google Translate API (`client=gtx`) | Gratuita, sin API key, via `requests` |
 | Visualización | Plotly + Matplotlib | Interactivas (HTML) + estáticas (PDF) |
 | Reportes | OpenPyXL + ReportLab | Excel multi-hoja + PDF profesional |
 | UI debug | Gradio Blocks | Chat + sidebar + voz + file download |
@@ -105,43 +248,49 @@ Input ──► Normalización ──► NLP (intención + entidades) ──► 
 
 ---
 
-## 3. Pipeline de ejecución
+## 4. Pipeline de ejecución
 
-Flujo determinístico desde input en lenguaje natural hasta respuesta enriquecida con datos Odoo en tiempo real:
+Flujo determinístico desde input en lenguaje natural hasta respuesta final en el idioma del usuario:
 
 ```
- 1  INPUT LIBRE          "¿Cómo van las ventas por marca este mes?"
+ 1  INPUT LIBRE          "請求書をキャンセルするには？" / "Cancel invoice" / "¿Cómo cancelo?"
         │
- 2  NORMALIZACIÓN        NormalizadorPrompt → typos, abreviaciones, sinónimos
+ 2  IDIOMA               request.idioma → _ctx_idioma.set() → ContextVar propagado
         │
- 3  NLP                  CerebroNLP + MotorNLPAvanzado → intención + acción
+ 3  NORMALIZACIÓN        NormalizadorPrompt → typos, abreviaciones, sinónimos
+        │
+ 4  NLP                  CerebroNLP + MotorNLPAvanzado → intención + acción
                          + entidades + confianza (spaCy + embeddings semánticos)
         │
- 4  AGENT ROUTING        GestorMultiAgente.resolver_agente()
+ 5  AGENT ROUTING        GestorMultiAgente.resolver_agente()
                          Si prompt multi-dominio → activa CADENA de agentes
         │
- 5  PRE-VALIDACIÓN       Cada agente enriquece la consulta:
+ 6  PRE-VALIDACIÓN       Cada agente enriquece la consulta:
                          auto-rellena fechas, valida campos, ajusta parámetros
         │
- 6  EJECUCIÓN ODOO       Executor dedicado por agente → consulta en tiempo real
+ 7  EJECUCIÓN ODOO       Executor dedicado por agente → consulta en tiempo real
                          107+ mapeos directos: AnalizadorAvanzado,
                          ConsultasEspecializadas, Predictor, Analizador360,
                          MotorBI, MotorKPIs
         │
- 7  ENRIQUECIMIENTO      enriquecer_respuesta() → análisis determinístico:
+ 8  ENRIQUECIMIENTO      enriquecer_respuesta() → análisis determinístico:
                          Pareto, concentración, promedios, anomalías
         │
- 8  VALIDACIÓN TRIPLE    Capa 1: agente de dominio verifica coherencia
+ 9  VALIDACIÓN TRIPLE    Capa 1: agente de dominio verifica coherencia
     + REGENERACIÓN       Capa 2: ValidadorFinal — respuesta ↔ pregunta
                          Capa 3: confianza < 78% → regenera (máx. ×3)
         │
- 9  OUTPUT               Texto + tabla HTML + indicador (agente + confianza %)
-                         + Excel/PDF descargable (si aplica)
+10  TRADUCCIÓN i18n      FormateadorConclusiones → wrapper en idioma destino
+                         labels_i18n.traducir_etiquetas() → tablas y etiquetas
+                         LLM (si disponible) → residuos no cubiertos
+        │
+11  OUTPUT               Texto + tabla Markdown + indicador (agente + confianza %)
+                         TODO en el idioma del usuario · Excel/PDF descargable
 ```
 
 ---
 
-## 4. Sistema multi-agente
+## 5. Sistema multi-agente
 
 Orquestación de **13 agentes** (12 de dominio + 1 validador) con routing de **3 niveles** de prioridad:
 
@@ -180,7 +329,7 @@ $$\text{confianza} = \frac{\text{principal} \times 2 + \text{soporte} \times 1 +
 
 ---
 
-## 5. Motor NLP
+## 6. Motor NLP
 
 | Componente | Clase | Función |
 |---|---|---|
@@ -198,7 +347,7 @@ $$\text{confianza} = \frac{\text{principal} \times 2 + \text{soporte} \times 1 +
 
 ---
 
-## 6. Memoria y conocimiento
+## 7. Memoria y conocimiento
 
 ### Memoria vectorial — ChromaDB
 
@@ -230,9 +379,18 @@ Tres niveles de persistencia:
 
 Sanitización automática de metadatos para compatibilidad ChromaDB: solo tipos `str`, `int`, `float`, `bool`.
 
+### Base de conocimiento — Manuales de Odoo
+
+`ProcesadorManuales` indexa documentos `.docx` y construye un índice JSON con búsqueda semántica y soporte multiidioma completo:
+
+- **Extracción**: secciones, pasos numerados, imágenes inline vía `python-docx`
+- **Índice**: palabras clave ES ponderadas por frecuencia + índice invertido
+- **Búsqueda contextual**: 8+ reglas de bonus/penalización (POS, kardex, cierre de mes, etc.)
+- **Multiidioma**: pre-traducción de títulos y pasos vía Google Translate; cache en JSON
+
 ---
 
-## 7. Motor LLM (Ollama)
+## 8. Motor LLM (Ollama)
 
 Inferencia 100% local — **zero data egress**. Los datos de Odoo nunca salen del servidor.
 
@@ -247,7 +405,7 @@ Inferencia 100% local — **zero data egress**. Los datos de Odoo nunca salen de
 
 ---
 
-## 8. Predicción ML/DL
+## 9. Predicción ML/DL
 
 Sistema híbrido con evaluación de confianza cruzada entre modelos:
 
@@ -263,7 +421,7 @@ Casos de uso: predicción de ventas, agotamiento de inventario, riesgo de morosi
 
 ---
 
-## 9. Auditoría de datos
+## 10. Auditoría de datos
 
 ### Auditoría de calidad — Triple validación
 
@@ -285,7 +443,7 @@ Ejecución programada sobre la totalidad de la base Odoo: detección de facturas
 
 ---
 
-## 10. Capa API REST (FastAPI)
+## 11. Capa API REST (FastAPI)
 
 Backend HTTP desacoplado: la dependencia es unidireccional `api → bot`, nunca al revés.
 
@@ -295,7 +453,7 @@ Backend HTTP desacoplado: la dependencia es unidireccional `api → bot`, nunca 
 |---|---|---|:---:|
 | `GET` | `/health` | Estado del servicio sin instanciar el bot | — |
 | `GET` | `/status` | Estado operativo: bot, LLM, Odoo | — |
-| `POST` | `/chat` | Consulta al agente (NL → respuesta enriquecida) | Bearer |
+| `POST` | `/chat` | Consulta al agente — campo `idioma`: `"es"` / `"en"` / `"ja"` | Bearer |
 | `GET` | `/reportes` | Catálogo de tipos de reporte disponibles | Bearer |
 | `POST` | `/reportes/generar` | Genera reporte del tipo especificado | Bearer |
 | `GET/POST/PUT/DELETE` | `/configuracion` | CRUD de empresas con cifrado Fernet (legacy) | Bearer + admin |
@@ -381,7 +539,7 @@ http://127.0.0.1:8000/docs
 
 ---
 
-## 11. Frontend (Next.js 14)
+## 12. Frontend (Next.js 14)
 
 SPA completa con autenticación JWT, protección de rutas y consumo de la API REST.
 
@@ -410,7 +568,7 @@ npm run build && npm start
 
 ---
 
-## 12. Seguridad
+## 13. Seguridad
 
 ### Controles implementados
 
@@ -441,7 +599,7 @@ Ver detalle completo en [`AUDITORIA_MEJORAS.md`](AUDITORIA_MEJORAS.md):
 
 ---
 
-## 13. Estructura del proyecto
+## 14. Estructura del proyecto
 
 ```
 ANDROMEDA/
@@ -583,7 +741,7 @@ ANDROMEDA/
 
 ---
 
-## 14. Instalación y configuración
+## 15. Instalación y configuración
 
 ### Requisitos del sistema
 
@@ -646,7 +804,7 @@ python main.py web
 
 ---
 
-## 15. Docker
+## 16. Docker
 
 El entorno Docker está disponible para desarrollo con hot reload y para producción optimizada.
 
@@ -712,7 +870,7 @@ docker compose -f compose.prod.yml up -d --build
 
 ---
 
-## 16. Testing
+## 17. Testing
 
 ```bash
 # Suite completa
@@ -736,7 +894,7 @@ python -m pytest tests/test_auth.py -v
 
 ---
 
-## 17. Despliegue
+## 18. Despliegue
 
 ### Git
 
@@ -781,7 +939,7 @@ SQLAlchemy crea las tablas automáticamente en el primer arranque.
 
 ---
 
-## 18. Troubleshooting
+## 19. Troubleshooting
 
 | Síntoma | Causa probable | Resolución |
 |---|---|---|
@@ -799,6 +957,8 @@ SQLAlchemy crea las tablas automáticamente en el primer arranque.
 | `Object of type DataFrame is not JSON serializable` | Resultado de query no serializable | Bug conocido en `conector_odoo.py` para `stock.warehouse` — en seguimiento |
 | `Import Error` en tests | Dependencias desactualizadas | `pip install -r requirements.txt` |
 | Backend en Docker no recarga cambios | Volumen no montado correctamente | Verificar `volumes:` en `compose.yml`; reiniciar con `docker compose up -d` |
+| Manual devuelve sección incorrecta en JA/EN | Primera vez que se traduce el índice | Esperar ~10 s en la primera consulta; las siguientes son instantáneas desde el cache |
+| Texto del manual en español pese a JA | Traducciones no guardadas en el JSON | Verificar acceso a internet del contenedor; revisar logs de `traducir_indice` |
 
 ---
 
@@ -809,3 +969,430 @@ SQLAlchemy crea las tablas automáticamente en el primer arranque.
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Axel%20Gutiérrez-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/axel-ismael-gutierrez-gutierrez-01b959333)
 [![Portfolio](https://img.shields.io/badge/Portfolio-ingenieroaxelgutierrez-FF6B35)](https://ingenieroaxelgutierrez-art.github.io/Portafolio/)
 [![GitHub](https://img.shields.io/badge/GitHub-ingenieroaxelgutierrez--art-181717?logo=github&logoColor=white)](https://github.com/ingenieroaxelgutierrez-art)
+
+---
+
+---
+
+# 日本語版
+
+## 概要
+
+ANDROMEDAは、Odooインスタンスに直接接続し、ビジネスデータに関する**自然言語**クエリにリアルタイムで回答するエンタープライズ向けAI会話エージェントです。多層NLPパイプライン、13のドメインエージェントによるマルチエージェントオーケストレーション、永続的なベクトルメモリを持つRAG、ハイブリッドML/DL、**ネイティブ多言語対応（ES・EN・JA）**、Next.jsフロントエンドを持つREST APIを組み合わせています — **100%ローカル動作、データ外部流出ゼロ**。
+
+---
+
+## 目次
+
+1. [システムアーキテクチャ](#1-システムアーキテクチャ)
+2. [多言語システム](#2-多言語システム)
+3. [技術スタック](#3-技術スタック)
+4. [実行パイプライン](#4-実行パイプライン)
+5. [マルチエージェントシステム](#5-マルチエージェントシステム)
+6. [NLPエンジン](#6-nlpエンジン)
+7. [メモリと知識ベース](#7-メモリと知識ベース)
+8. [LLMエンジン（Ollama）](#8-llmエンジンollama)
+9. [ML/DL予測](#9-mldl予測)
+10. [データ監査](#10-データ監査)
+11. [REST APIレイヤー（FastAPI）](#11-rest-apiレイヤーfastapi)
+12. [フロントエンド（Next.js 14）](#12-フロントエンドnextjs-14)
+13. [セキュリティ](#13-セキュリティ)
+14. [プロジェクト構造](#14-プロジェクト構造)
+15. [インストールと設定](#15-インストールと設定)
+16. [Docker](#16-docker)
+17. [テスト](#17-テスト)
+18. [デプロイ](#18-デプロイ)
+19. [トラブルシューティング](#19-トラブルシューティング)
+
+---
+
+## 1. システムアーキテクチャ
+
+ANDROMEDAは**レイヤードモジュラーアプリケーション**アーキテクチャと**RAG + Agentikワークフロー**認知パイプラインを実装しています。責務の分離は厳格で、下位レイヤーが上位レイヤーをインポートすることは一切ありません。
+
+### アプリケーションレイヤー
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│  プレゼンテーション   Gradio Blocks · Next.js 14 · FastAPI REST    │
+├────────────────────────────────────────────────────────────────────┤
+│  国際化（i18n）      ES · EN · JA — ContextVar による伝播         │
+├────────────────────────────────────────────────────────────────────┤
+│  オーケストレーション  OdooBotPro · GestorMultiAgente（13エージェント）│
+├────────────────────────────────────────────────────────────────────┤
+│  サービス            NLP · LLM · ML/DL · BI · 監査 · マニュアル   │
+├────────────────────────────────────────────────────────────────────┤
+│  インテグレーション   ConectorOdoo（OdooRPC/XML-RPC、40+モデル）   │
+├────────────────────────────────────────────────────────────────────┤
+│  パーシステンス       ChromaDB · SQLite · NetworkX · JSON          │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### 認知レイヤー（RAG + Agentic）
+
+```
+入力 ──► 正規化 ──► NLP（意図 + エンティティ）──► エージェントルーティング
+  ──► 事前検証 ──► Odoo実行 ──► エンリッチメント
+  ──► 三重検証 ──► 条件付き再生成
+  ──► i18n翻訳 ──► ユーザーの言語での最終出力
+```
+
+| コンポーネント | 実装 | 仕様 |
+|---|---|---|
+| 埋め込みエンジン | `paraphrase-multilingual-MiniLM-L12-v2` | 384次元、多言語対応 |
+| セマンティックストア | ChromaDB（永続化） | 6コレクション、最大10Kドキュメント |
+| 知識グラフ | NetworkX DiGraph | 14ノードタイプ、9リレーション、90日減衰 |
+| LLMランタイム | Ollama（ローカル） | Llama 3.2、Mistral、DeepSeek-R1:8b |
+| 言語伝播 | `_ctx_idioma` ContextVar | リクエスト開始時に一度設定、実行チェーン全体で参照可能 |
+
+---
+
+## 2. 多言語システム
+
+ANDROMEDAは3つの独立したレイヤーで完全な多言語対応（ES・EN・JA）を実装しています。
+
+### 2.1 言語の伝播
+
+```python
+# models/conector_odoo.py
+_ctx_idioma: ContextVar[str] = ContextVar("_ctx_idioma", default="es")
+
+# app/api/routers/chat.py — リクエスト開始時に一度設定
+idioma: str = request.idioma or "es"
+_token_idioma = _ctx_idioma.set(idioma)
+_ctx_copy = contextvars.copy_context()
+```
+
+### 2.2 分析ラッパーテキスト — `FormateadorConclusiones`
+
+| 言語 | サンプル |
+|---|---|
+| `es` | `📊 Analicé los datos de ventas del período. Los resultados son los siguientes:` |
+| `en` | `📊 I analyzed the sales data for the period. Here are the results:` |
+| `ja` | `📊 売上データを分析しました。結果は以下の通りです：` |
+
+### 2.3 テーブルラベルとセクション — `labels_i18n.py`
+
+| タイプ | カバレッジ |
+|---|---|
+| 完全一致置換 | 約150のstring：ヘッダー、テーブル列、メトリクス行 |
+| 正規表現パターン | 約50の式：動的な値が混在するstring向け |
+
+### 2.4 Odooマニュアル — Google Translateによる完全翻訳
+
+```
+日本語クエリ: "請求書をキャンセルするには？"
+    │
+    ▼
+traducir_consulta_i18n("ja")  →  ESキーワード
+    │
+    ▼
+buscar(consulta_es)  →  正しいセクション  ✓
+    │
+    ▼
+formatear_respuesta(idioma="ja")  →  titulo_ja / pasos_ja（キャッシュ済み）
+```
+
+### 2.5 カバレッジサマリー
+
+| コンポーネント | ES | EN | JA |
+|---|:---:|:---:|:---:|
+| 分析コンテキストテキスト | ✅ | ✅ | ✅ |
+| データテーブルのラベル | ✅ | ✅ | ✅ |
+| マニュアルのセクションタイトル | ✅ | ✅* | ✅* |
+| マニュアルのセマンティック検索 | ✅ | ✅ | ✅ |
+
+---
+
+## 3. 技術スタック
+
+| レイヤー | 技術 | バージョン / 仕様 |
+|---|---|---|
+| ランタイム | Python | 3.11+ |
+| APIバックエンド | FastAPI + Uvicorn | 0.133.1 / 0.41.0 |
+| フロントエンド | Next.js + TypeScript | 14.2.29 / 5.5 |
+| ORM / SaaS DB | SQLAlchemy | 2.x — SQLite開発 / PostgreSQL本番 |
+| 認証 | python-jose + passlib | JWT HS256、pbkdf2_sha256 |
+| ERP | OdooRPC（XML-RPC） | Odoo 14–19+、40+モデル |
+| LLMランタイム | Ollama | Llama 3.2、Mistral、DeepSeek-R1:8b |
+| NLP | spaCy + SentenceTransformers | `es_core_news_sm` + MiniLM-L12-v2 |
+| ベクターストア | ChromaDB | 永続化、6コレクション |
+| 知識グラフ | NetworkX | DiGraph、積極的枝刈り |
+| ML | scikit-learn | ランダムフォレスト、K-Means、Isolation Forest |
+| ディープラーニング | PyTorch | LSTM 2層、64ユニット |
+| i18n — 辞書 | `labels_i18n.py` | 約200のES→EN/JA翻訳 |
+| i18n — マニュアル | Google Translate API | 無料、APIキー不要 |
+| コンテナ | Docker + Compose | 開発 + 本番 |
+
+---
+
+## 4. 実行パイプライン
+
+```
+ 1  自由入力             "請求書をキャンセルするには？" / "Cancel invoice" / "¿Cómo cancelo?"
+        │
+ 2  言語設定             request.idioma → _ctx_idioma.set() → ContextVar伝播
+        │
+ 3  正規化               NormalizadorPrompt
+        │
+ 4  NLP                  CerebroNLP → 意図 + アクション + エンティティ
+        │
+ 5  エージェントルーティング GestorMultiAgente
+        │
+ 6  事前検証              クエリエンリッチメント
+        │
+ 7  Odoo実行             専用エグゼキューター → リアルタイムクエリ（107+マッピング）
+        │
+ 8  エンリッチメント      パレート、集中度、平均値、異常値
+        │
+ 9  三重検証 + 再生成     信頼度 < 78% → 自動再生成（最大×3）
+        │
+10  i18n翻訳             FormateadorConclusiones + labels_i18n + LLM
+        │
+11  最終出力             全てユーザーの言語でのテキスト + テーブル
+```
+
+---
+
+## 5. マルチエージェントシステム
+
+**13エージェント**（12ドメイン + 1バリデーター）の3レベルプライオリティルーティング：
+
+| エージェント | ドメイン | バックエンド |
+|---|---|---|
+| 販売 | 商業分析、トップ製品/顧客 | `AnalizadorAvanzado`（25+メソッド） |
+| 在庫 | 在庫、回転率、再注文 | `ConsultasEspecializadas` |
+| 財務 | 売掛金/買掛金、キャッシュフロー | `KPIsFinancieros` |
+| 診断 | 異常値、不正検知 | `AnalizadorAnomalias` |
+| Odooクエリ | モデル、ユーザー | `ConectorOdoo`直接 |
+| CRM | パイプライン、リード、チャーン | `Analizador360` |
+| 購買 | 調達、サプライヤー | `ConsultasEspecializadas` |
+| POS | POSセッション、レジ | `AnalizadorAvanzado` |
+| 予測 | モンテカルロ、LSTM | `SistemaPrediccionInteligente` |
+| 数学 | ROI、IRR、NPV | `MotorBIExperto` |
+| 統計 | 360°、相関、RFM | `Analizador360` |
+| 人事 | 給与、人員数 | `ConsultasEspecializadas` |
+| ValidadorFinal | ゲートキーパー | 内部パイプライン |
+
+---
+
+## 6. NLPエンジン
+
+| コンポーネント | クラス | 機能 |
+|---|---|---|
+| 意図検出 | `MotorNLPAvanzado` | 90+意図 |
+| 言語分析 | `CerebroNLP` + spaCy | NER、依存関係分析 |
+| セマンティック埋め込み | `MotorEmbeddings` | MiniLM-L12-v2（384次元） |
+| 正規化 | `NormalizadorPrompt` | タイポ修正、略語展開 |
+
+---
+
+## 7. メモリと知識ベース
+
+### ベクターメモリ — ChromaDB
+
+| プロパティ | 値 |
+|---|---|
+| コレクション | 6（`conversaciones`、`analisis`、`errores`、`alertas`、`reportes`、`conocimiento`） |
+| 上限 | 10,000ドキュメント/コレクション |
+| 永続化 | `data/memoria/chroma.sqlite3` |
+
+### 知識グラフ — NetworkX DiGraph
+
+| プロパティ | 値 |
+|---|---|
+| ノードタイプ | 14種 |
+| リレーションタイプ | 9種 |
+| 上限 | 500ノード · 2,000エッジ |
+| 自動保存 | 5インタラクションごと |
+
+### Odooマニュアル知識ベース
+
+`.docx`ドキュメントのインデックス化、セマンティック検索、Google Translateによる多言語対応（JA・EN）、JSONキャッシュ。
+
+---
+
+## 8. LLMエンジン（Ollama）
+
+100%ローカル推論 — **データ外部流出ゼロ**。
+
+| 側面 | 詳細 |
+|---|---|
+| サポートモデル | Llama 3.2、Mistral、DeepSeek-R1:8b |
+| ガードレール | `CAMPOS_PROHIBIDOS`、`MODELOS_PROHIBIDOS` |
+| レコード制限 | LLM生成クエリあたり最大500件 |
+| 設定 | `OLLAMA_HOST`変数 |
+
+---
+
+## 9. ML/DL予測
+
+| モデル | フレームワーク | 用途 |
+|---|---|---|
+| ランダムフォレスト | scikit-learn | 販売予測、チャーンリスク |
+| K-Means | scikit-learn | 顧客セグメンテーション |
+| Isolation Forest | scikit-learn | 異常値検出 |
+| LSTM（2層、64ユニット） | PyTorch | 時系列、長期トレンド |
+| モンテカルロ | 独自実装 | フォーキャスト信頼区間 |
+
+---
+
+## 10. データ監査
+
+### 品質監査 — 三重検証
+
+| フェーズ | 検出される問題 |
+|:---:|---|
+| 1 | 支払い不完全な請求書、請求書なし売上 |
+| 2 | 停滞したドラフト、放棄された見積 |
+| 3 | 連絡先なし顧客、価格なし製品 |
+
+出力：**8シートのプロフェッショナルExcel**。
+
+---
+
+## 11. REST APIレイヤー（FastAPI）
+
+| メソッド | パス | 説明 | 認証 |
+|---|---|---|:---:|
+| `GET` | `/health` | サービス状態 | — |
+| `POST` | `/chat` | NLクエリ（`idioma`：`es`/`en`/`ja`） | Bearer |
+| `POST` | `/reportes/generar` | レポート生成 | Bearer |
+| `GET/POST/PUT/DELETE` | `/admin/empresas` | 企業CRUD | Bearer + admin |
+| `POST` | `/auth/login` | JWT発行 | — |
+
+---
+
+## 12. フロントエンド（Next.js 14）
+
+| 側面 | 実装 |
+|---|---|
+| フレームワーク | Next.js 14.2、TypeScript 5.5、Tailwind CSS |
+| ルーティング | App Router、保護されたルートグループ |
+| 認証クライアント | `src/lib/auth.ts` — JWT + ロール |
+| 管理者ビュー | `/admin`、`/admin/empresas`、`/admin/usuarios` |
+| エージェントビュー | `/agente/chat`、`/agente/metricas` |
+
+---
+
+## 13. セキュリティ
+
+| コントロール | 実装 |
+|---|---|
+| 認証情報 | `.env`に分離；VCSから除外 |
+| ログ | `FiltroCredenciales` — 機密データの自動編集 |
+| 入力検証 | 2,000文字に切り詰め + Pydantic検証 |
+| LLMガードレール | `CAMPOS_PROHIBIDOS` + `MODELOS_PROHIBIDOS` |
+| JWT | HS256、15分アクセス、7日リフレッシュ |
+| パスワード | `pbkdf2_sha256`（OWASP推奨） |
+
+---
+
+## 14. プロジェクト構造
+
+```
+ANDROMEDA/
+├── app/api/main_api.py          # FastAPI app
+├── models/conector_odoo.py      # _ctx_idioma ContextVar
+├── services/
+│   ├── formatters/
+│   │   ├── formateador_conclusiones.py  # ES/EN/JA ラッパー
+│   │   └── labels_i18n.py       # ~200 翻訳
+│   ├── knowledge/procesador_manuales.py  # i18n マニュアル
+│   ├── memory/                  # ChromaDB + 知識グラフ
+│   └── prediction/              # ML/DL モデル
+├── tests/                       # 695テスト
+├── data/manuales/indice_conocimiento.json  # 翻訳キャッシュ
+└── frontend/src/                # Next.js 14 SPA
+```
+
+---
+
+## 15. インストールと設定
+
+```bash
+git clone https://github.com/tuusuario/ANDROMEDA.git
+cd ANDROMEDA
+pip install -r requirements.txt
+python -m spacy download es_core_news_sm
+cp .env.example .env
+# .envを編集：ODOO_URL、ODOO_DB、ODOO_USER、ODOO_API_KEY、SECRET_KEY
+```
+
+### 起動
+
+```bash
+uvicorn app.api.main_api:app --host 127.0.0.1 --port 8000 --reload
+cd frontend && npm install && npm run dev
+```
+
+---
+
+## 16. Docker
+
+```bash
+docker compose up -d
+```
+
+| サービス | URL |
+|---|---|
+| バックエンドFastAPI | `http://localhost:8000` |
+| Swagger UI | `http://localhost:8000/docs` |
+| フロントエンドNext.js | `http://localhost:3000` |
+
+---
+
+## 17. テスト
+
+```bash
+python -m pytest tests/ -v
+```
+
+| メトリクス | 値 |
+|---|---|
+| 総テスト数 | **695** |
+| 実行時間 | 約48秒 |
+| テストファイル数 | 18 |
+
+---
+
+## 18. デプロイ
+
+```bash
+# 本番環境
+docker compose -f compose.prod.yml up -d --build
+# またはDockerなし
+gunicorn app.api.main_api:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+```
+
+---
+
+## 19. トラブルシューティング
+
+| 症状 | 考えられる原因 | 解決策 |
+|---|---|---|
+| DockerでOllamaに接続できない | `OLLAMA_HOST`が`localhost` | `OLLAMA_HOST=http://host.docker.internal:11434` |
+| `OdooRPC AuthenticationError` | 認証情報が間違っている | `.env`を確認 |
+| 日本語でマニュアルが誤ったセクションを返す | インデックスが未翻訳 | 初回は約10秒待つ |
+| マニュアルのテキストがスペイン語のまま | 翻訳がJSONに保存されていない | コンテナのインターネットアクセスを確認 |
+| `ChromaDB Lock` | 複数のインスタンスが開いている | 全プロセスを閉じて再起動 |
+| `403 Solo administradores` | トークンのロールが間違っている | ログアウト → 再ログイン |
+| フロントエンドの接続拒否 | FastAPIが起動していない | `docker compose up -d backend` |
+
+---
+
+## 著者
+
+**Ing. Axel Gutiérrez** — Tech Lead · Software Engineer
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Axel%20Gutiérrez-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/axel-ismael-gutierrez-gutierrez-01b959333)
+[![Portfolio](https://img.shields.io/badge/Portfolio-ingenieroaxelgutierrez-FF6B35)](https://ingenieroaxelgutierrez-art.github.io/Portafolio/)
+[![GitHub](https://img.shields.io/badge/GitHub-ingenieroaxelgutierrez--art-181717?logo=github&logoColor=white)](https://github.com/ingenieroaxelgutierrez-art)
+
+---
+
+<p align="center">
+  <b>ANDROMEDA</b> — Enterprise AI Agent for Odoo · MIT License<br>
+  <sub>Built for operations teams who demand precision, speed and multilingual intelligence.</sub><br>
+  <sub>精度、速度、多言語インテリジェンスを求める運用チームのために構築されました。</sub>
+</p>
