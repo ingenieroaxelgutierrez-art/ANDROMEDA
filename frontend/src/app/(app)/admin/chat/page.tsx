@@ -58,7 +58,7 @@ export default function AdminChatPage() {
       <div className="flex items-center gap-3 mb-4">
         <div className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0"
              style={{ background: "linear-gradient(135deg,#667eea,#764ba2)" }}>
-          <Image src="/logo.png" alt="ANDROMEDA" width={36} height={36} className="w-full h-full object-cover" />
+          <Image src="/logo.png" alt="ANDROMEDA--白川結月" width={36} height={36} className="w-full h-full object-cover" />
         </div>
         <div>
           <h2 className="text-lg font-bold text-white leading-tight">{t("chat.title")}</h2>
@@ -81,7 +81,7 @@ export default function AdminChatPage() {
           <div className="flex flex-col items-center justify-center h-full gap-4 py-12">
             <div className="w-16 h-16 rounded-2xl overflow-hidden"
                  style={{ background: "linear-gradient(135deg,#667eea,#764ba2)", opacity: 0.7 }}>
-              <Image src="/logo.png" alt="ANDROMEDA" width={64} height={64} className="w-full h-full object-cover" />
+              <Image src="/logo.png" alt="ANDROMEDA--白川結月" width={64} height={64} className="w-full h-full object-cover" />
             </div>
             <p className="text-center text-sm" style={{ color: "rgba(255,255,255,0.35)" }}>
               {t("admin.chatAdminMode")}
@@ -98,7 +98,7 @@ export default function AdminChatPage() {
           <div className="flex items-end gap-2 mb-3">
             <div className="w-8 h-8 rounded-xl flex-shrink-0 overflow-hidden"
                  style={{ background: "linear-gradient(135deg,#667eea,#764ba2)" }}>
-              <Image src="/logo.png" alt="ANDROMEDA" width={32} height={32} className="w-full h-full object-cover" />
+              <Image src="/logo.png" alt="ANDROMEDA--白川結月" width={32} height={32} className="w-full h-full object-cover" />
             </div>
             <div className="px-4 py-3 rounded-2xl rounded-bl-sm"
                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>

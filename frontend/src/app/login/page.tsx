@@ -42,9 +42,9 @@ export default function LoginPage() {
         <div className="text-center space-y-2">
           <div className="mx-auto w-16 h-16 rounded-2xl overflow-hidden"
                style={{ background: "linear-gradient(135deg,#667eea,#764ba2,#f64f59)" }}>
-            <Image src="/logo.png" alt="ANDROMEDA" width={64} height={64} className="w-full h-full object-cover" />
+            <Image src="/logo.png" alt="ANDROMEDA--結" width={64} height={64} className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-3xl font-black text-gradient tracking-tight">ANDROMEDA</h1>
+          <h1 className="text-3xl font-black text-gradient tracking-tight">ANDROMEDA--結</h1>
           <p className="text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
             {t("login.subtitle")}
           </p>
@@ -74,7 +74,7 @@ export default function LoginPage() {
               id="password" type="password" autoComplete="current-password" required
               value={password} onChange={(e) => setPassword(e.target.value)}
               className="input-dark"
-              placeholder="••••••••"
+              placeholder="ええええええええ"
             />
           </div>
 

@@ -3,7 +3,7 @@ import "./globals.css";
 import I18nProvider from "@/components/I18nProvider";
 
 export const metadata: Metadata = {
-  title: "ANDROMEDA",
+  title: "ANDROMEDA - 結",
   description: "Advanced Neural Data Resource for Operations, Management & Enterprise Decision Analytics",
   icons: { icon: "/logo1.png" },
 };
