@@ -246,7 +246,7 @@ export default function ChatBubble({ role, content, tablaHtml }: Readonly<ChatBu
             )
           )}
             {/* Panel de tabla/gráfica extra proveniente de tabla_html del backend */}
-            {tablaHtml && renderHtmlPart(tablaHtml, -1)}
+            {tablaHtml && renderHtmlPart(tablaHtml, -1, t("common.additionalChart"))}
           </>
         )}
       </div>

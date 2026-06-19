@@ -14,8 +14,6 @@ export const LOCALES: { value: Locale; label: string; flag: string }[] = [
 
 export const LOCALE_STORAGE_KEY = "andromeda_locale";
 
-// ── Diccionario de traducciones ───────────────────────────────────────────────
-// Cada hoja del árbol es un objeto { es, en, ja }.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const T: Record<string, any> = {
   nav: {
